@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 model = Model(name='mine_schedule')
-model.parameters.mip.tolerances.mipgap = 0.05
+model.parameters.mip.tolerances.mipgap = 0.01
 #%% ARTIFICIAL INSTANCE DATA
 n_trucks = 34 # The number of trucks
 n_years = 10 # The time period
@@ -13,8 +13,25 @@ planned_production = 200000
 age_bin_size = 5000
 min_truck_availability = planned_production / n_trucks
 
+def get_cost_matrix(n_trucks, n_bins, n_years, cost_type='random', critical_bin = 15):
+    if(cost_type == 'random'):
+        return 100 * np.random.random((n_trucks, n_bins, n_years))
+    if(cost_type == 'increasing'):
+        means = np.linspace(5, 20, n_bins)
+        C = np.zeros((n_trucks, n_bins, n_years))
+        for t in range(n_trucks):
+            for b in range(n_bins):
+                for y in range(n_years): 
+                    if(b > critical_bin):
+                        mean_val = means[b-critical_bin] + np.random.standard_normal()
+                    else:
+                        mean_val = means[b] + np.random.standard_normal() 
+                    C[t,b,y] = mean_val 
+        
+        return C
+                    
 # Discounted cost value for truck T at age bin B and period T
-C = 100 * np.random.random((n_trucks, n_bins, n_years))
+C = get_cost_matrix(n_trucks, n_bins, n_years, cost_type='increasing')
 # Engine rebuild cost
 FE = [750000] * n_trucks
 # Available truck hours per period T
@@ -34,7 +51,7 @@ c_critical = 15
 #%% CPLEX VARS
 x = model.integer_var_cube(range(n_trucks), range(n_bins), range(n_years), name='x')
 y_bin = model.binary_var_cube(range(n_trucks), range(n_bins), range(n_years), name='y_bin')
-h = model.integer_var_matrix(range(n_trucks), range(n_years + 1), name='h')
+h = model.integer_var_matrix(range(n_trucks), range(n_years), name='h')
 
 #%% CPLEX MODEL
 # Objective: TODO: revisar se não está adicionando FE a mais
@@ -79,9 +96,36 @@ model.export_as_lp('D:\\otredes-ppgee\\trabalho_final\\test.lp')
 model.export_as_mps('D:\\otredes-ppgee\\trabalho_final\\test_mps.mps')
 
 #%% SOLVE
-if(model.solve(log_output=True)):
+solution = model.solve(log_output=True)
+#%% RESULTS
+if(solution):
     model.report()
     model.print_information()
-    model.print_solution()
+    #model.print_solution()
 
-#print(model.solve_details.status)
+    # Plot the accumulated hours
+    fig, ax = plt.subplots(2,1, figsize=(16,10))
+
+    image_h = np.zeros((n_years, n_trucks))
+    image_hours = np.zeros((n_years, n_trucks))
+    for i in range(n_years):
+        for j in range(n_trucks):
+            image_h[i,j] = model.get_var_by_name('h_{}_{}'.format(j,i))
+
+    for i in range(n_years):        
+        for j in range(n_trucks):
+            hours = 0
+            for b in range(n_bins):
+                hours = hours + int(model.get_var_by_name('x_{}_{}_{}'.format(j,b,i)))
+            image_hours[i,j] = hours
+
+    ch = ax[0].matshow(image_h)
+    cho = ax[1].matshow(image_hours)
+
+    fig.colorbar(ch, ax=ax[0])
+    fig.colorbar(cho, ax=ax[1])
+
+    plt.tight_layout()
+    plt.show()
+
+# %%
