@@ -9,7 +9,7 @@ model.parameters.mip.tolerances.mipgap = 0.01
 n_trucks = 34 # The number of trucks
 n_years = 10 # The time period
 n_bins = 20 # The number of age bins
-planned_production = 200000
+planned_production = 365 * 24 * n_trucks # the entire year non stop
 age_bin_size = 5000
 min_truck_availability = planned_production / n_trucks
 
@@ -29,22 +29,33 @@ def get_cost_matrix(n_trucks, n_bins, n_years, cost_type='random', critical_bin 
                     C[t,b,y] = mean_val 
         
         return C
-                    
+
+def get_production_targets(n_years, target_type='random'):
+    if(target_type=='random'):
+        return np.random.randint(low=0.7*planned_production, high=planned_production*0.8, size=n_years)
+    if(target_type=='paper' & n_years == 10):
+        return [221050, 220300, 232500, 231500, 232600, 230000, 220000, 200000, 106300, 25000]
+
+def get_initial_ages(n_trucks, ages_type='random'):
+    if(ages_type == 'random'):
+        return np.random.randint(low=0, high=20000, size = n_trucks)
+    # if(ages_type == 'paper'): TODO: copy from paper
+
 # Discounted cost value for truck T at age bin B and period T
 C = get_cost_matrix(n_trucks, n_bins, n_years, cost_type='increasing')
 # Engine rebuild cost
 FE = [750000] * n_trucks
 # Available truck hours per period T
-A = np.random.randint(low=min_truck_availability, high=min_truck_availability * 1.5, size = (n_trucks, n_years))
+A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availability, size = (n_trucks, n_years))
 #np.ones((n_trucks, n_years)) * min_truck_availability
 # Maximum available truck hours at age bin V
 M = np.arange(start=1, stop=n_bins+1) * age_bin_size
 # The cumulative used hours for truck t at time period t
 # H = np.random.randint(low=0, high=1000, size = (n_trucks, n_years))
 # The required truck hours for a given time period y
-R = np.ones(n_years) * planned_production #p.random.randint(low=200000, high=240000, size = n_years)
+R = get_production_targets(n_years)
 # The initial truck ages
-InitialAge = np.random.randint(low=0, high=20000, size = n_trucks)
+InitialAge = get_initial_ages(n_trucks)
 # The critical age bin
 c_critical = 15
 
@@ -119,8 +130,8 @@ if(solution):
                 hours = hours + int(model.get_var_by_name('x_{}_{}_{}'.format(j,b,i)))
             image_hours[i,j] = hours
 
-    ch = ax[0].matshow(image_h)
-    cho = ax[1].matshow(image_hours)
+    ch = ax[0].matshow(image_h, cmap='Greys')
+    cho = ax[1].matshow(image_hours,cmap='Reds')
 
     fig.colorbar(ch, ax=ax[0])
     fig.colorbar(cho, ax=ax[1])
