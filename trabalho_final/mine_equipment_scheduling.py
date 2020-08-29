@@ -34,7 +34,7 @@ c_critical = 15
 #%% CPLEX VARS
 x = model.integer_var_cube(range(n_trucks), range(n_bins), range(n_years), name='x')
 y_bin = model.binary_var_cube(range(n_trucks), range(n_bins), range(n_years), name='y_bin')
-# h = model.integer_var_matrix(range(n_trucks), range(n_years + 1), name='h')
+h = model.integer_var_matrix(range(n_trucks), range(n_years + 1), name='h')
 
 #%% CPLEX MODEL
 # Objective: TODO: revisar se não está adicionando FE a mais
@@ -59,7 +59,7 @@ for t in range(n_trucks):
 
 # (5) - Correct bin order (upper bound)
 for t in range(n_trucks):
-    for b in range((n_bins - 1)): # we can skip the last bin: TODO: validate this assumption
+    for b in range((n_bins - 1)): # we can skip the last bin
         for y in range(n_years): 
             model.add_constraint(x[t,(b+1),y] - M[(b+1)]* model.sum(y_bin[t,b,k] for k in range(y+1)) <= 0)
 
@@ -67,9 +67,13 @@ for t in range(n_trucks):
 for y in range(n_years):
     model.add_constraint(model.sum(x[t,b,y] for t in range(n_trucks) for b in range(n_bins)) == R[y])
     
-# # (7) - Initial ages
-# for t in range(n_trucks):
-#     model.add_constraint(model.sum(x[t,b,0] for b in range(n_bins)) >= InitialAge[t])
+# (7) - Initial ages
+for y in range(n_years):
+    for t in range(n_trucks):
+        if(y == 0):
+            model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + InitialAge[t] == h[t,y])
+        else:
+            model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + h[t,y-1] == h[t,y])
 
 model.export_as_lp('D:\\otredes-ppgee\\trabalho_final\\test.lp')
 model.export_as_mps('D:\\otredes-ppgee\\trabalho_final\\test_mps.mps')
