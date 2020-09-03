@@ -5,29 +5,31 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 model = Model(name='mine_schedule')
-model.parameters.mip.tolerances.mipgap = 0.1
+model.parameters.mip.tolerances.mipgap = 0.05
 #%% ARTIFICIAL INSTANCE DATA
 n_trucks = 34 # The number of trucks
 n_years = 10 # The time period
 n_bins = 20 # The number of age bins
 planned_production = 365 * 24 * n_trucks # the entire year non stop
-#age_bin_size = 5000
 M = 5000
 min_truck_availability = planned_production / n_trucks
 
-def get_cost_matrix(n_trucks, n_bins, n_years, cost_type='random', critical_bin = 15):
+def get_cost_matrix(n_trucks, n_bins, n_years, cost_type='random', default_critical_bin = 15, critical_bins = []):
     if(cost_type == 'random'):
         return 100 * np.random.random((n_trucks, n_bins, n_years))
     if(cost_type == 'increasing'):
         means = np.linspace(5, 20, n_bins)
         C = np.zeros((n_trucks, n_bins, n_years))
+
         for t in range(n_trucks):
+            critical_bin = int(critical_bins[t])
+            offset = int(default_critical_bin - critical_bins[t])
             for b in range(n_bins):
                 for y in range(n_years): 
-                    if(b > critical_bin):
-                        mean_val = means[b-critical_bin] + np.random.standard_normal()
+                    if(b > critical_bins[t]):
+                        mean_val = means[b-critical_bin + offset] + np.random.standard_normal()
                     else:
-                        mean_val = means[b] + np.random.standard_normal() 
+                        mean_val = means[b + offset] + np.random.standard_normal() 
                     C[t,b,y] = mean_val 
         
         return C
@@ -35,7 +37,7 @@ def get_cost_matrix(n_trucks, n_bins, n_years, cost_type='random', critical_bin 
 def get_production_targets(n_years, target_type='random'):
     if(target_type=='random'):
         return np.random.randint(low=0.7*planned_production, high=planned_production*0.8, size=n_years)
-    if(target_type=='paper' & n_years == 10):
+    if((target_type=='paper') & (n_years == 10)):
         return [221050, 220300, 232500, 231500, 232600, 230000, 220000, 200000, 106300, 25000]
 
 def get_initial_ages(n_trucks, ages_type='random'):
@@ -45,8 +47,9 @@ def get_initial_ages(n_trucks, ages_type='random'):
         return np.zeros(n_trucks)
     # if(ages_type == 'paper'): TODO: copy from paper
 
-# Discounted cost value for truck T at age bin B and period T
-C = get_cost_matrix(n_trucks, n_bins, n_years, cost_type='increasing')
+def get_critical_bins(ages, default_critical_bin = 15, bin_size = 5000):
+    return np.array([ int(default_critical_bin - np.floor(age / bin_size) - 1) for age in ages])
+
 # Engine rebuild cost
 FE = [750000] * n_trucks
 # Available truck hours per period T
@@ -57,11 +60,13 @@ A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availabilit
 # The cumulative used hours for truck t at time period t
 # H = np.random.randint(low=0, high=1000, size = (n_trucks, n_years))
 # The required truck hours for a given time period y
-R = get_production_targets(n_years)
+R = get_production_targets(n_years, 'paper')
 # The initial truck ages
 InitialAge = get_initial_ages(n_trucks)
-# The critical age bin
-c_critical = 15
+# The critical age bin adjusted for each truck
+c_critical = get_critical_bins(InitialAge, bin_size=M)
+# Discounted cost value for truck T at age bin B and period T
+C = get_cost_matrix(n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
 
 #%% CPLEX VARS
 x = model.integer_var_cube(range(n_trucks), range(n_bins), range(n_years), name='x')
@@ -71,14 +76,17 @@ h = model.integer_var_matrix(range(n_trucks), range(n_years), name='h')
 #%% CPLEX MODEL
 # Objective: TODO: revisar se não está adicionando FE a mais
 hour_costs = model.sum(x[t,b,y] * C[t,b,y] for t in range(n_trucks) for b in range(n_bins) for y in range(n_years))
-repair_costs = model.sum(y_bin[t,c_critical,y]*FE[t] for t in range(n_trucks) for y in range(n_years))
+repair_costs = model.sum(y_bin[t,c_critical[t],y]*FE[t] for t in range(n_trucks) for y in range(n_years))
 model.minimize(model.sum(hour_costs + repair_costs))
 
-# TODO: se os caminhões possuem uma idade inicial, o modelo está considerando 
+# se os caminhões possuem uma idade inicial, o modelo está considerando 
 # que ele começa na bin 0, o que não é verdade. Ou seja, mesmo que o caminhão 
-# atinja 70k horas funcionando, ele não irá cobrar o reparo do motor de 75k.
-#
-# se faltar tempo, utilizar somente caminhões novos (idade inicial = 0)
+# atinja 70k horas funcionando, ele não irá cobrar o reparo do motor de 75k. 
+# Para resolver esse problema, a matriz de custo foi ajustada para levar em conta
+# que caminhões com maior idade inicial iniciem com um custo maior de manutenção.
+# Alem disso, a critical_bin de cada caminhão também é ajustada, de forma que ela começe
+# mais cedo de forma proporcional à idade inicial. Por exemplo: 
+# Se idade inicial = 18000 => caminhão está na bin 3 => critical_bin = 15 - 3.
 
 # Constraints
 # (1) - Trucks maximum availability
@@ -115,7 +123,9 @@ for t in range(n_trucks):
 for y in range(n_years):
     model.add_constraint(model.sum(x[t,b,y] for t in range(n_trucks) for b in range(n_bins)) == R[y])
 
-# (7) Account for truck age to initialize bins
+# # (7) Ensure a truck does not operate more than 100,000 hours
+# for t in range(n_trucks):
+#    model.add_constraint(h[t, n_years-1] <= M * n_bins)
 
 
 #%% SOLVE
@@ -153,13 +163,14 @@ if(solution):
 
     for i in range(n_years):
         for j in range(n_trucks):
-            image_y_critical[i,j] = int(model.get_var_by_name('y_bin_{}_{}_{}'.format(j,c_critical,i)))
+            image_y_critical[i,j] = int(model.get_var_by_name('y_bin_{}_{}_{}'.format(j,c_critical[j],i)))
 
     #ch = ax[0].matshow(image_h, cmap='Greys')
     #cho = ax[1].matshow(image_hours,cmap='Reds')
     sns.heatmap(image_h / 1000, annot=True, ax=ax[0])
     sns.heatmap(image_hours / 1000, annot=True,ax=ax[1])
     sns.heatmap(image_bins / 1000, annot=True, ax=ax[2])
+    #sns.heatmap(image_y_critical , annot=True, ax=ax[3])
 
     #fig.colorbar(ch, ax=ax[0])
     #fig.colorbar(cho, ax=ax[1])
