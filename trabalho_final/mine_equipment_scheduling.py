@@ -59,7 +59,7 @@ A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availabilit
 # The required truck hours for a given time period y
 R = get_production_targets(n_years)
 # The initial truck ages
-InitialAge = get_initial_ages(n_trucks, 'zero')
+InitialAge = get_initial_ages(n_trucks)
 # The critical age bin
 c_critical = 15
 
@@ -74,16 +74,30 @@ hour_costs = model.sum(x[t,b,y] * C[t,b,y] for t in range(n_trucks) for b in ran
 repair_costs = model.sum(y_bin[t,c_critical,y]*FE[t] for t in range(n_trucks) for y in range(n_years))
 model.minimize(model.sum(hour_costs + repair_costs))
 
+# TODO: se os caminhões possuem uma idade inicial, o modelo está considerando 
+# que ele começa na bin 0, o que não é verdade. Ou seja, mesmo que o caminhão 
+# atinja 70k horas funcionando, ele não irá cobrar o reparo do motor de 75k.
+#
+# se faltar tempo, utilizar somente caminhões novos (idade inicial = 0)
+
 # Constraints
 # (1) - Trucks maximum availability
 for y in range(n_years):
     for t in range(n_trucks):
         model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) <= A[t,y])
+
 # (2) - Ensure move to upper bin 
 for t in range(n_trucks):
     for b in range(n_bins): 
         model.add_constraint(model.sum(x[t,b,y] for y in range(n_years)) <= M)
+
 # (3) - Accumulated truck age
+for y in range(n_years):
+    for t in range(n_trucks):
+        if(y == 0):
+            model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + InitialAge[t] == h[t,y])
+        else:
+            model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + h[t,y-1] == h[t,y])
 
 # (4) - Correct bin order (lower bound)
 for t in range(n_trucks):
@@ -100,17 +114,9 @@ for t in range(n_trucks):
 # (6) - Required truck yours per year
 for y in range(n_years):
     model.add_constraint(model.sum(x[t,b,y] for t in range(n_trucks) for b in range(n_bins)) == R[y])
-    
-# (7) - Initial ages
-for y in range(n_years):
-    for t in range(n_trucks):
-        if(y == 0):
-            model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + InitialAge[t] == h[t,y])
-        else:
-            model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + h[t,y-1] == h[t,y])
 
-#model.export_as_lp('D:\\otredes-ppgee\\trabalho_final\\test.lp')
-#model.export_as_mps('D:\\otredes-ppgee\\trabalho_final\\test_mps.mps')
+# (7) Account for truck age to initialize bins
+
 
 #%% SOLVE
 solution = model.solve(log_output=True)
