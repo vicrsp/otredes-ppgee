@@ -10,11 +10,11 @@ model = Model(name='equipment_maintenance_sched')
 #model.parameters.mip.tolerances.mipgap = 0.05
 
 #%% Load data
-ClusterDB = pd.read_csv('ClusterDB.csv', header=None, sep=',', names=['ID', 'eta', 'beta'])
-EquipDB = pd.read_csv('EquipDB.csv', header=None, sep=',', names=['ID', 't0', 'cluster', 'failCost'])
-MPDB = pd.read_csv('ClusterDB.csv', header=None, sep=',', names=['ID', 'riskFactor', 'planCost'])
+ClusterDB = pd.read_csv('ClusterDB.csv', header=None, sep=',', names=['ID', 'eta', 'beta']).set_index('ID')
+EquipDB = pd.read_csv('EquipDB.csv', header=None, sep=',', names=['ID', 't0', 'cluster', 'failCost']).set_index('ID')
+MPDB = pd.read_csv('MPDB.csv', header=None, sep=',', names=['ID', 'riskFactor', 'planCost']).set_index('ID')
 
-EquipDB = pd.merge(EquipDB, ClusterDB, left_on='cluster', right_on='ID', suffixes=('_equip', '_cluster'))
+EquipDB = EquipDB.join(ClusterDB, on='cluster', sort=False)
 
 n_equipment = EquipDB.shape[0]
 n_plans = MPDB.shape[0]
@@ -30,11 +30,11 @@ def calculateFailureProbability(t0, k, eta, beta):
 failProbs = np.zeros((n_equipment, n_plans))
 for i in range(n_equipment):
     for j in range(n_plans):
-        equipment = EquipDB.loc[EquipDB.ID_equip == (i+1)]
-        eta = equipment.eta.values[0]
-        beta = equipment.beta.values[0]
-        t0 = equipment.t0.values[0]
-        k = MPDB.loc[MPDB.ID == (j+1)].riskFactor.values[0]
+        equipment = EquipDB.loc[(i+1)]
+        eta = equipment.eta
+        beta = equipment.beta
+        t0 = equipment.t0
+        k = MPDB.loc[(j+1)].riskFactor
 
         failProbs[i,j] = calculateFailureProbability(t0, k, eta, beta)
 
@@ -44,10 +44,10 @@ y = model.binary_var_matrix(range(n_equipment), range(n_plans), name='y')
 
 # Objectives
 # 1: maintenace cost
-maintenance_cost = model.sum(y[i,j] * MPDB.loc[MPDB.ID == (j+1)].planCost.values[0] for i in range(n_equipment) for j in range(n_plans))
+maintenance_cost = model.sum(y[i,j] * MPDB.loc[(j+1)].planCost for i in range(n_equipment) for j in range(n_plans))
 
 # 2: expected failure cost
-expected_failure_cost = model.sum(failProbs[i,j] * y[i,j] * EquipDB.loc[EquipDB.ID_equip == (i+1)].failCost.values[0] for i in range(n_equipment) for j in range(n_plans))
+expected_failure_cost = model.sum(failProbs[i,j] * y[i,j] * EquipDB.loc[(i+1)].failCost for i in range(n_equipment) for j in range(n_plans))
 
 # Restrictions
 # 1: only one plan can be used for each equipment
@@ -56,6 +56,22 @@ for i in range(n_equipment):
 
 #%% Solve
 # TEST: Plambda scalarization
+n_pareto = 200
+results = np.zeros((n_pareto, n_equipment))
+for index, value in enumerate(np.linspace(0, 1, n_pareto)):
+    model.minimize(value * maintenance_cost + (1-value)*expected_failure_cost)
+    solution = model.solve()
+
+    for i in range(n_equipment):   
+        plans = []     
+        for j in range(n_plans):
+            plans.append(int(model.get_var_by_name('y_{}_{}'.format(i,j))))
+        
+        results[index, i] = np.argmax(plans) + 1
+
+np.savetxt("Solution01.csv", results, delimiter=",", fmt='%d' )
+
+#%%
 model.minimize(maintenance_cost + expected_failure_cost)
 solution = model.solve(log_output=True)
 
@@ -63,4 +79,10 @@ if(solution):
     model.report()
     model.print_information()
     model.print_solution()
+# %% Eval HVI
+from oct2py import octave
+octave.eval('pkg load statistics')
+hvi = octave.EvalParetoApp('Solution01.csv')
+
+
 # %%
