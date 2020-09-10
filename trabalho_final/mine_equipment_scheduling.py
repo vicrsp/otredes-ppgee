@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 model = Model(name='mine_schedule')
-model.parameters.mip.tolerances.mipgap = 0.01
+model.parameters.mip.tolerances.mipgap = 0.05
 #%% ARTIFICIAL INSTANCE DATA
 n_trucks = 34 # The number of trucks
 n_years = 10 # The time period
@@ -47,7 +47,7 @@ def get_initial_ages(n_trucks, ages_type='random'):
         return np.zeros(n_trucks)
     # if(ages_type == 'paper'): TODO: copy from paper
 
-def get_critical_bins(ages, default_critical_bin = 15, bin_size = 5000):
+def get_critical_bins(ages, default_critical_bin = 14, bin_size = 5000):
     return np.array([ int(default_critical_bin - np.floor(age / bin_size)) for age in ages])
 
 # Engine rebuild cost
