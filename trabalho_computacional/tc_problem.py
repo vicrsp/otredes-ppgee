@@ -6,7 +6,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import interpolate
-
 #%% Model class
 class EquipmentMaintenanceProblem:
     def __init__(self, deltaT = 5):
@@ -134,7 +133,7 @@ class EquipmentMaintenanceProblem:
         return area, front_areas
 
 
-    def solve_pepsilon(self, n_pareto = 200, output_file = None):
+    def solve_pepsilon(self, output_file = None):
         self.init_model()
         maint_cost, fail_cost = self.get_objectives()
 
@@ -149,50 +148,51 @@ class EquipmentMaintenanceProblem:
         x2 = self.get_solution_values()
 
         # Calulate the eps bounds
-        epsilon_min = self.eval_expected_failure_cost(x2)
-        epsilon_max = self.eval_expected_failure_cost(x1)
+        epsilon_min = self.eval_maintenance_cost(x1)
+        epsilon_max = self.eval_maintenance_cost(x2)
 
-        utopic = np.array([self.eval_maintenance_cost(x1), epsilon_min])
-        nadir = np.array([self.eval_maintenance_cost(x2), epsilon_max])
+        utopic = np.array([self.eval_maintenance_cost(x1), self.eval_expected_failure_cost(x2)])
+        nadir = np.array([self.eval_maintenance_cost(x2), self.eval_expected_failure_cost(x1)])
 
-        epsilon = np.linspace(epsilon_min, epsilon_max, n_pareto)
+        epsilon = np.arange(epsilon_min, epsilon_max + 1)
 
+        n_pareto = len(epsilon)
         solutions = np.zeros((n_pareto, self.n_equipment))
         pareto_values = np.zeros((n_pareto, 2))
         
-        solutions[0, :] = np.argmax(x2) + 1
-        pareto_values[0, 0] = self.eval_maintenance_cost(x2)
-        pareto_values[0, 1] = self.eval_expected_failure_cost(x2)
+        # solutions[0, :] = np.argmax(x1) + 1
+        # pareto_values[0, 0] = self.eval_expected_failure_cost(x1)
+        # pareto_values[0, 1] = self.eval_maintenance_cost(x1)
 
         ## TODO: aumentar a resolução do epslon próximo da borda do custo de manutenção
         # Parece que encontrar mais soluções nessa região aumenta o HVI
         # da fronteira pareto inicial
         
-        for ip in range(1, n_pareto-1):
+        for index, eps_value in enumerate(epsilon):
             self.reset_model()            
             # Add the p-epsilon constraint
-            self.model.add_constraint(fail_cost - epsilon[ip] <= 0)
+            self.model.add_constraint(maint_cost - eps_value <= 0)
 
             # Add the objective
-            self.model.minimize(maint_cost)
+            self.model.minimize(fail_cost)
 
             self.model.solve()
             solution_values = self.get_solution_values()
 
             for i in range(self.n_equipment):   
-                solutions[ip, i] = np.argmax(solution_values[i,:]) + 1
+                solutions[index, i] = np.argmax(solution_values[i,:]) + 1
             
-            pareto_values[ip, 0] = self.eval_maintenance_cost(solution_values)
-            pareto_values[ip, 1] = self.eval_expected_failure_cost(solution_values)
-            hvi, _ = self.eval_hvi(pareto_values[:ip,:], utopic, nadir)
+            pareto_values[index, 0] = self.eval_maintenance_cost(solution_values)
+            pareto_values[index, 1] = self.eval_expected_failure_cost(solution_values)
+            hvi, _ = self.eval_hvi(pareto_values[:index,:], utopic, nadir)
 
-            print('Iteration Pepsilon {}: {} - HVI={}'.format(ip, pareto_values[ip], hvi))
+            print('Iteration Pepsilon {}: {} - HVI={}'.format(index, pareto_values[index], hvi))
 
 
-        pareto_values[-1, 0] = self.eval_maintenance_cost(x1)
-        pareto_values[-1, 1] = self.eval_expected_failure_cost(x1)
-        solutions[-1, :] = np.argmax(x1) + 1
-        
+        # pareto_values[-1, 0] = self.eval_expected_failure_cost(x2)
+        # pareto_values[-1, 1] = self.eval_maintenance_cost(x2)
+        # solutions[-1, :] = np.argmax(x2) + 1
+
         hvi, _ = self.eval_hvi(pareto_values, utopic, nadir)
         print('Final HVI={}'.format(hvi))
 
@@ -209,10 +209,25 @@ class EquipmentMaintenanceProblem:
 
         return sampled_front
 
-    def pareto_analysis(self, front):
-        f = interpolate.interp1d(front[:,0], front[:,1], kind= 'slinear')
-        f1_samples = np.linspace(np.min(front[:,0]), np.max(front[:,0]), 1000)
-        f2_samples = f(f1_samples) 
+    def resample_front_values(self, front_areas, n_resampled):
+        # filter out invalid areas
+        front_areas = front_areas[front_areas.area > 0]
+
+        # approximate the pareto front
+        f = interpolate.interp1d(front_areas.fobj1, front_areas.fobj2, kind= 'slinear')
+
+        # get the region to resample
+        to_resample = front_areas[front_areas.area >= 0.001]
+        new_minref = to_resample.fobj1.min()
+        new_maxref = to_resample.fobj1.max()
+        
+        epsilon_resample = f(np.linspace(new_maxref, new_minref, n_resampled))
+
+        return epsilon_resample   
+
+    def pareto_analysis(self, front, n_samples=2000):
+        
+        sampled_front = self.get_pareto_samples(front, n_samples)
 
         minref = front.min(axis=0).reshape(2,1)
         maxref = front.max(axis=0).reshape(2,1)
@@ -220,13 +235,12 @@ class EquipmentMaintenanceProblem:
         fig, ax = plt.subplots(1, 2)
 
         ax[0].plot(front[:,0], front[:,1] , 'r.')
-        ax[0].plot(f1_samples, f2_samples , 'b.')
+        ax[0].plot(sampled_front[:,0], sampled_front[:,1] , 'b.')
         ax[0].set_xlabel('Custo de manutenção')
         ax[0].set_ylabel('Custo esperado de Falha')
         #ax[0].title('Fronteira pareto - P-epslon')
 
         hvi_original, areas = self.eval_hvi(front, minref, maxref)
-        sampled_front = np.hstack((f1_samples.reshape(-1,1),f2_samples.reshape(-1,1)))
         hvi_resampled, _ = self.eval_hvi(sampled_front, minref, maxref)
 
         ax[0].legend(['Front: {}'.format(hvi_original), 'Resampled: {}'.format(hvi_resampled)])
@@ -237,24 +251,25 @@ class EquipmentMaintenanceProblem:
 
         plt.show()
 
-        
+        df = pd.DataFrame(front, columns=['fobj1','fobj2'])
+        df['area'] = areas
 
-
+        return df
 
 
 #%% SOLVE
 problem = EquipmentMaintenanceProblem()
 #_, pareto_values_plambda = problem.solve_plambda(n_pareto = 200, output_file='Solution03')
-_, pareto_values_pepsilon = problem.solve_pepsilon(n_pareto = 50, output_file='Solution02')
+_, pareto_values_pepsilon = problem.solve_pepsilon(output_file='Solution05')
 
 # Plot the pareto front
-problem.pareto_analysis(pareto_values_pepsilon)
+ds_pareto = problem.pareto_analysis(pareto_values_pepsilon)
+sns.pairplot(ds_pareto)
+plt.show()
 
 # %% Eval HVI
 from oct2py import octave
 octave.eval('pkg load statistics')
-hvi_pe = octave.EvalParetoApp('Solution02.csv')
+hvi_pe = octave.EvalParetoApp('Solution05.csv')
 # hvi_plam = octave.EvalParetoApp('Solution03.csv')
 
-
-# %%
