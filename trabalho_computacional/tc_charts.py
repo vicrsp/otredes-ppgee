@@ -42,9 +42,18 @@ ax.fill_between(data.loc[:,'fobj1'], data.loc[:,'fobj2'], data.loc[:,'fobj2'].ma
 
 # Solutions heatmap
 solution = pd.read_csv('Solution05.csv', header=None).to_numpy()
-solution_r = solution[np.arange(0, 1001, 2)]
 plt.figure(figsize=(10,12))
-sns.heatmap(solution_r, yticklabels=100, xticklabels=100, cmap='viridis')
+sns.heatmap(solution, yticklabels=100, xticklabels=100, cmap=['red','blue','green'], fmt='%d', cbar_kws={'ticks': [1, 2, 3], 'orientation': 'horizontal', 'label': 'Plano de manutenção'})
 plt.xlabel('Equipamento')
 plt.ylabel('Solução')
 plt.savefig('solutions_heatmap.png')
+
+# Solutions proportion
+n_sol, n_cols = solution.shape
+proportions = np.zeros((n_sol, 3))
+for i in range(n_sol):
+    proportions[i,0] = 100 * np.count_nonzero(solution[i] == 1) / n_cols
+    proportions[i,1] = 100 * np.count_nonzero(solution[i] == 2) / n_cols
+    proportions[i,2] = 100 * np.count_nonzero(solution[i] == 3) / n_cols
+    
+plt.plot(proportions)

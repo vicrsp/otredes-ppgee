@@ -4,6 +4,7 @@ from docplex.mp.model import Model
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 #%% Model class
 class EquipmentMaintenanceProblem:
     def __init__(self, deltaT = 5):
@@ -106,6 +107,9 @@ class EquipmentMaintenanceProblem:
 
 
     def solve_pepsilon(self, output_file = None):
+        # start the timer
+        start = time.time()
+
         self.init_model()
         maint_cost, fail_cost = self.get_objectives()
 
@@ -148,12 +152,14 @@ class EquipmentMaintenanceProblem:
             
             pareto_values[index, 0] = self.eval_maintenance_cost(solution_values)
             pareto_values[index, 1] = self.eval_expected_failure_cost(solution_values)
-            hvi, _ = self.eval_hvi(pareto_values[:index,:], utopic, nadir)
 
-            print('Iteration Pepsilon {}: {} - HVI={}'.format(index, pareto_values[index], hvi))
+            print('Iteration solution {}: {}'.format(index, pareto_values[index]))
+
+        end = time.time()
+        print('Elapsed time: {} sec'.format(end - start))
 
         hvi, _ = self.eval_hvi(pareto_values, utopic, nadir)
-        print('Final HVI={}'.format(hvi))
+        print('Final HVI = {}'.format(hvi))
 
         if(output_file != None):
             np.savetxt("{}.csv".format(output_file), solutions, delimiter=",", fmt='%d' )
@@ -165,7 +171,7 @@ class EquipmentMaintenanceProblem:
         minref = front.min(axis=0).reshape(2,1)
         maxref = front.max(axis=0).reshape(2,1)
 
-        fig, ax = plt.subplots()
+        _, ax = plt.subplots()
 
         ax.plot(front[:,0], front[:,1] , 'r.')
         ax.set_xlabel('Custo de manutenção')
