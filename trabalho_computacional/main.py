@@ -4,7 +4,6 @@ from docplex.mp.model import Model
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 #%% Model class
 class EquipmentMaintenanceProblem:
     def __init__(self, deltaT = 5):
@@ -211,22 +210,5 @@ class EquipmentMaintenanceProblem:
 
 #%% SOLVE
 problem = EquipmentMaintenanceProblem()
-#_, pareto_values_plambda = problem.solve_plambda(n_pareto = 200, output_file='Solution03')
-_, pareto_values_pepsilon = problem.solve_pepsilon(output_file='Solution05')
+_, pareto_values_pepsilon = problem.solve_pepsilon(output_file='TC_Solution')
 
-# Plot the pareto front
-ds_pareto = problem.pareto_analysis(pareto_values_pepsilon)
-sns.pairplot(ds_pareto)
-plt.show()
-
-# %% Eval HVI
-from oct2py import octave
-octave.eval('pkg load statistics')
-hvi_pe = octave.EvalParetoApp('Solution05.csv')
-# hvi_plam = octave.EvalParetoApp('Solution03.csv')
-
-#%% Analyze solution
-problem = EquipmentMaintenanceProblem()
-pareto = problem.eval_file('Solution05.csv')
-pareto.to_csv('Pareto_Solution05.csv')
-# %%

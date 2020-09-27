@@ -12,7 +12,6 @@ EquipDB_ClusterDB = EquipDB.join(ClusterDB, on='Cluster', sort=False)
 
 # EquipDB
 sns.pairplot(EquipDB, hue='Cluster')
-
 EquipDB.groupby('Cluster').aggregate([np.mean, np.std])
 
 # ClusterDB
@@ -31,3 +30,21 @@ plt.legend(['1', '2', '3', '4'])
 plt.xlabel('Idade')
 plt.ylabel('Probabilidade de falha')
     
+
+# Analyze solution
+data = pd.read_csv('Pareto_Solution05.csv')
+fig, ax = plt.subplots()
+ax.plot(data.loc[:,'fobj1'], data.loc[:,'fobj2'], 'r.')
+ax.set_xlabel('Custo de manutenção')
+ax.set_ylabel('Custo esperado de Falha')
+ax.fill_between(data.loc[:,'fobj1'], data.loc[:,'fobj2'], data.loc[:,'fobj2'].max(), alpha=0.5)
+
+
+# Solutions heatmap
+solution = pd.read_csv('Solution05.csv', header=None).to_numpy()
+solution_r = solution[np.arange(0, 1001, 2)]
+plt.figure(figsize=(10,12))
+sns.heatmap(solution_r, yticklabels=100, xticklabels=100, cmap='viridis')
+plt.xlabel('Equipamento')
+plt.ylabel('Solução')
+plt.savefig('solutions_heatmap.png')
