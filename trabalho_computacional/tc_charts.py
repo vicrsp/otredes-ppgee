@@ -14,6 +14,8 @@ EquipDB_ClusterDB = EquipDB.join(ClusterDB, on='Cluster', sort=False)
 sns.pairplot(EquipDB, hue='Cluster')
 EquipDB.groupby('Cluster').aggregate([np.mean, np.std])
 
+EquipDB_ClusterDB.groupby('Cluster').count()['Idade']
+
 # ClusterDB
 def calculateFailureProbability(t0, delta, eta, beta):
     dcf = lambda x: 1 - np.exp(-((x/eta)**beta))
@@ -42,18 +44,28 @@ ax.fill_between(data.loc[:,'fobj1'], data.loc[:,'fobj2'], data.loc[:,'fobj2'].ma
 
 # Solutions heatmap
 solution = pd.read_csv('Solution05.csv', header=None).to_numpy()
-plt.figure(figsize=(10,12))
-sns.heatmap(solution, yticklabels=100, xticklabels=100, cmap=['red','blue','green'], fmt='%d', cbar_kws={'ticks': [1, 2, 3], 'orientation': 'horizontal', 'label': 'Plano de manutenção'})
-plt.xlabel('Equipamento')
-plt.ylabel('Solução')
-plt.savefig('solutions_heatmap.png')
+# plt.figure(figsize=(10,12))
+# sns.heatmap(solution, yticklabels=100, xticklabels=100, cmap=['red','blue','green'], fmt='%d', cbar_kws={'ticks': [1, 2, 3], 'orientation': 'horizontal', 'label': 'Plano de manutenção'})
+# plt.xlabel('Equipamento')
+# plt.ylabel('Solução')
+# plt.savefig('solutions_heatmap.png')
 
 # Solutions proportion
+plt.figure()
 n_sol, n_cols = solution.shape
-proportions = np.zeros((n_sol, 3))
-for i in range(n_sol):
-    proportions[i,0] = 100 * np.count_nonzero(solution[i] == 1) / n_cols
-    proportions[i,1] = 100 * np.count_nonzero(solution[i] == 2) / n_cols
-    proportions[i,2] = 100 * np.count_nonzero(solution[i] == 3) / n_cols
-    
-plt.plot(proportions)
+proportions = np.zeros((n_cols, 3))
+for i in range(n_cols):
+    proportions[i,0] = 100 * np.count_nonzero(solution[:,i] == 1) / n_sol
+    proportions[i,1] = 100 * np.count_nonzero(solution[:,i] == 2) / n_sol
+    proportions[i,2] = 100 * np.count_nonzero(solution[:,i] == 3) / n_sol
+
+solutions_cluster = pd.DataFrame(np.transpose(solution))
+solutions_cluster['id'] = EquipDB.index
+solutions_cluster['cluster'] = EquipDB['Cluster']
+
+s_melted = pd.melt(solutions_cluster, id_vars=['id','cluster'], var_name='solution_index')
+#sns.barplot(x='id',y='value', hue='cluster', data=s_melted)
+
+s_cluster_count = s_melted.groupby(['cluster', 'value']).count()['id']
+s_cluster_count.groupby(level=0).sum()
+values_per_cluster = 100 * s_cluster_count / s_cluster_count.groupby(level=0).sum()
