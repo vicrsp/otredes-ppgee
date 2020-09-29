@@ -212,8 +212,6 @@ class EquipmentMaintenanceProblem:
         
         return self.pareto_analysis(pareto_values)
 
-
-
 #%% SOLVE
 problem = EquipmentMaintenanceProblem()
 _, pareto_values_pepsilon = problem.solve_pepsilon(output_file='TC_Solution')
