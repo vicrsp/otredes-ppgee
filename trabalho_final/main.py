@@ -1,5 +1,6 @@
 #%%  CPLEX imports
 from docplex.mp.model import Model
+from docplex.mp.progress import ProgressListener, ProgressClock, TextProgressListener
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -7,17 +8,55 @@ import pandas as pd
 from os import path
 
 #%% PROBLEM DEFINITION
+
+class MIPProgress(ProgressListener):
+    def __init__(self, clock=ProgressClock.Gap, gap_fmt=None, obj_fmt=None,
+                absdiff=None, reldiff=None):
+        ProgressListener.__init__(self, clock, absdiff, reldiff)
+        self._gap_fmt = gap_fmt or "{:.2%}"
+        self._obj_fmt = obj_fmt or "{:.4f}"
+        self._count = 0
+        self.mip_gap = []
+        self.current_objective = []
+        self.time = []
+
+    def notify_start(self):
+        super(MIPProgress, self).notify_start()
+        self._count = 0
+
+    def notify_progress(self, progress_data):
+        self._count += 1
+        pdata_has_incumbent = progress_data.has_incumbent
+        if pdata_has_incumbent:
+            self.current_objective.append(progress_data.current_objective)
+            self.mip_gap.append(progress_data.mip_gap * 100)
+            self.time.append(round(progress_data.time, 1))
+    
+    def plot_progress(self):
+        if(len(self.mip_gap) > 0):
+            _, ax = plt.subplots(2, 1)
+            ax[0].plot(self.time, self.mip_gap)
+            ax[1].plot(self.time, self.current_objective)
+
+            ax[0].set_xlabel('Time (sec)')
+            ax[1].set_xlabel('Time (sec)')
+
+            ax[0].set_ylabel('Relative gap (%)')
+            ax[1].set_ylabel('Objective')
+
 class TruckMaintenanceProblem:
     def __init__(self, n_trucks = 10, n_bins = 20, n_years = 5):
         self.n_trucks = n_trucks # The number of trucks
         self.n_years = n_years # The time period
         self.n_bins = n_bins # The number of age bins
+        self.progress = MIPProgress()
 
-    def init_model(self, C, c_critical, FE, A, M, R):
+    def init_model(self, C, c_critical, FE, A, M, R, InitialAge):
         self.model = Model(name='mine_schedule')
+        self.model.add_progress_listener(self.progress)
         self.x, self.y_bin = self.set_decision_vars()
         self.set_objective(C, c_critical, FE)
-        self.set_constraints(A, M, R)
+        self.set_constraints(A, M, R, InitialAge)
     
     def set_decision_vars(self):
         x = self.model.integer_var_cube(range(self.n_trucks), range(self.n_bins), range(self.n_years), name='x')
@@ -29,7 +68,7 @@ class TruckMaintenanceProblem:
         repair_costs = self.model.sum(self.y_bin[t,c_critical[t],y]*FE[t] for t in range(self.n_trucks) for y in range(self.n_years))
         self.model.minimize(self.model.sum(hour_costs + repair_costs))    
 
-    def set_constraints(self, A, M, R):
+    def set_constraints(self, A, M, R, InitialAge):
         # (1) - Trucks maximum availability
         for y in range(self.n_years):
             for t in range(self.n_trucks):
@@ -56,7 +95,10 @@ class TruckMaintenanceProblem:
         for y in range(self.n_years):
             self.model.add_constraint(self.model.sum(self.x[t,b,y] for t in range(self.n_trucks) for b in range(self.n_bins)) == R[y])
 
-
+        # (7) Ensure a truck does not operate more than 100,000 hours
+        for t in range(self.n_trucks):
+            self.model.add_constraint(self.model.sum(self.x[t,b,y] for b in range(self.n_bins) for y in range(self.n_years)) <= M * self.n_bins - InitialAge[t])
+    
     def solve(self, log=True, gap = None, max_time = 60 * 10):
         if (gap != None):
             self.model.parameters.mip.tolerances.mipgap = gap
@@ -71,7 +113,7 @@ class TruckMaintenanceProblem:
             #model.print_solution()
 
             # Plot the accumulated hours
-            fig, ax = plt.subplots(4,1, figsize=(16,10))
+            _, ax = plt.subplots(4,1, figsize=(16,10))
 
             image_h = np.zeros((self.n_years, self.n_trucks))
             image_hours = np.zeros((self.n_years, self.n_trucks))
@@ -96,21 +138,21 @@ class TruckMaintenanceProblem:
                 for j in range(self.n_trucks):
                     image_y_critical[i,j] = int(self.model.get_var_by_name('y_bin_{}_{}_{}'.format(j,c_critical[j],i)))
 
-
             image_h = np.tile(InitialAge, (self.n_years, 1)) + np.cumsum(image_hours, axis=0)
-            sns.heatmap(image_h / 1000, annot=True, ax=ax[0])
-            sns.heatmap(image_hours / 1000, annot=True,ax=ax[1])
-            sns.heatmap(image_bins / 1000, annot=True, ax=ax[2])
+            
+            sns.heatmap((image_h/1000).astype(int), annot=True, ax=ax[0], fmt='d')
+            sns.heatmap((image_hours/1000).astype(int), annot=True,ax=ax[1])
+            sns.heatmap((image_bins/1000).astype(int), annot=True, ax=ax[2])
             sns.heatmap(image_y_critical , annot=True, ax=ax[3])
 
             ax[0].set_ylabel('Year')
-            ax[0].set_title('Accumulated hours (including initial age)')
+            ax[0].set_title('Accumulated hours (x0.001)')
             
             ax[1].set_ylabel('Year')
-            ax[1].set_title('Worked hours')
+            ax[1].set_title('Worked hours (x0.001)')
             
             ax[2].set_ylabel('Age bin')
-            ax[2].set_title('Hours per bin')
+            ax[2].set_title('Hours per bin (x0.001)')
 
             ax[3].set_ylabel('Year')
             ax[3].set_title('Trucks reaching critical hours')
@@ -318,8 +360,9 @@ class TruckMaintenanceProblemInstanceFactory:
 
     def get_critical_bins(self, ages, default_critical_bin = 14, bin_size = 5000):
         return np.array([ int(default_critical_bin - np.floor(age / bin_size)) for age in ages])
-# %% SMALL INSTANCE
+# %% INSTANCE FACTORY
 factory = TruckMaintenanceProblemInstanceFactory()
+# %% SMALL INSTANCE
 n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_small_instance()
 
 # Plot the cost matrix
@@ -352,35 +395,48 @@ plt.show()
 
 # Solve
 small_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
-small_instance.init_model(C, c_critical, FE, A, M, R)
+small_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
 small_instance.solve()
 small_instance.report_results(c_critical, InitialAges)
+small_instance.progress.plot_progress()
 
 # %% AVERAGE INSTANCE
 factory = TruckMaintenanceProblemInstanceFactory()
 n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_average_instance()
 
 # Solve
-small_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
-small_instance.init_model(C, c_critical, FE, A, M, R)
-small_instance.solve()
-small_instance.report_results(c_critical, InitialAges)
+avg_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
+avg_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
+avg_instance.solve()
+avg_instance.report_results(c_critical, InitialAges)
+
+# Report
+avg_instance.report_results(c_critical, InitialAges)
+avg_instance.progress.plot_progress()
+
 # %% LARGE INSTANCE
 n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_large_instance()
 
 # Solve
 large_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
-large_instance.init_model(C, c_critical, FE, A, M, R)
-large_instance.solve(gap=0.001)
+large_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
+large_instance.solve(gap=0.001, max_time=60 * 3)
 large_instance.report_results(c_critical, InitialAges)
+large_instance.progress.plot_progress()
 
 # %% PAPER INSTANCE
 n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_paper_instance()
 
 # Solve
-large_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
-large_instance.init_model(C, c_critical, FE, A, M, R)
-large_instance.solve(gap=0.001)
-large_instance.report_results(c_critical, InitialAges)
+paper_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
+paper_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
+paper_instance.solve(gap=0.001, max_time=60 * 10)
+
+# Report
+paper_instance.report_results(c_critical, InitialAges)
+paper_instance.progress.plot_progress()
+
+# %%
+
 
 # %%
