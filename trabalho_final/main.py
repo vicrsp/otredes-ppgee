@@ -57,8 +57,10 @@ class TruckMaintenanceProblem:
             self.model.add_constraint(self.model.sum(self.x[t,b,y] for t in range(self.n_trucks) for b in range(self.n_bins)) == R[y])
 
 
-    def solve(self, log=True, gap = 0.01, max_time = 60 * 10):
-        self.model.parameters.mip.tolerances.mipgap = gap
+    def solve(self, log=True, gap = None, max_time = 60 * 10):
+        if (gap != None):
+            self.model.parameters.mip.tolerances.mipgap = gap
+
         self.model.parameters.timelimit = max_time
         self.solution = self.model.solve(log_output=log)
 
@@ -69,7 +71,7 @@ class TruckMaintenanceProblem:
             #model.print_solution()
 
             # Plot the accumulated hours
-            fig, ax = plt.subplots(3,1, figsize=(16,10))
+            fig, ax = plt.subplots(4,1, figsize=(16,10))
 
             image_h = np.zeros((self.n_years, self.n_trucks))
             image_hours = np.zeros((self.n_years, self.n_trucks))
@@ -94,22 +96,29 @@ class TruckMaintenanceProblem:
                 for j in range(self.n_trucks):
                     image_y_critical[i,j] = int(self.model.get_var_by_name('y_bin_{}_{}_{}'.format(j,c_critical[j],i)))
 
-            #ch = ax[0].matshow(image_h, cmap='Greys')
-            #cho = ax[1].matshow(image_hours,cmap='Reds')
+
             image_h = np.tile(InitialAge, (self.n_years, 1)) + np.cumsum(image_hours, axis=0)
             sns.heatmap(image_h / 1000, annot=True, ax=ax[0])
             sns.heatmap(image_hours / 1000, annot=True,ax=ax[1])
             sns.heatmap(image_bins / 1000, annot=True, ax=ax[2])
-            # sns.heatmap(image_y_critical , annot=True, ax=ax[2])
+            sns.heatmap(image_y_critical , annot=True, ax=ax[3])
 
-            ax[0].set_ylabel('Horas')
-            ax[1].set_ylabel('Horas')
-            ax[2].set_ylabel('Horas')
+            ax[0].set_ylabel('Year')
+            ax[0].set_title('Accumulated hours (including initial age)')
+            
+            ax[1].set_ylabel('Year')
+            ax[1].set_title('Worked hours')
+            
+            ax[2].set_ylabel('Age bin')
+            ax[2].set_title('Hours per bin')
 
-            ax[0].set_xlabel('# Caminhão')
-            ax[1].set_xlabel('# Caminhão')
-            ax[2].set_xlabel('# Caminhão')
+            ax[3].set_ylabel('Year')
+            ax[3].set_title('Trucks reaching critical hours')
 
+
+            #ax[0].set_xlabel('# Caminhão')
+            #ax[1].set_xlabel('# Caminhão')
+            ax[3].set_xlabel('Truck #')
 
             #fig.colorbar(ch, ax=ax[0])
             #fig.colorbar(cho, ax=ax[1])
@@ -126,58 +135,48 @@ class TruckMaintenanceProblemInstanceFactory:
 
     def get_small_instance(self):
         n_trucks = 4 # The number of trucks
-        n_years = 1 # The time period
-        n_bins = 40 # The number of age bins
+        n_years = 3 # The time period
+        n_bins = 20 # The number of age bins
         max_planned_production = 365 * 24 * n_trucks # the entire year non stop
         min_truck_availability = max_planned_production / n_trucks
-        M = 1000
+        M = 2000
         
         # Engine rebuild cost
         FE = [750000] * n_trucks
         # Available truck hours per period T
-        if(path.isfile('instances/small_availability.csv')):
-            A = pd.read_csv('instances/small_availability.csv', sep=',', header=None).to_numpy()
-        else:
-            A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availability, size = (n_trucks, n_years))
-            np.savetxt('instances/small_availability.csv', A, delimiter=",")
-
+        A = self.load_available_truck_hours('small_availability.csv', n_trucks, n_years, min_truck_availability)
         # The required truck hours for a given time period y
-        if(path.isfile('instances/small_targets.csv')):
-            R = pd.read_csv('instances/small_targets.csv', sep=',', header=None).to_numpy().reshape(-1, )
-        else:
-            R = self.get_production_targets(n_years, max_planned_production, target_type='random')
-            np.savetxt('instances/small_targets.csv', R, delimiter=",")
-        
+        R = self.load_production_targets('small_targets.csv', n_years, max_planned_production, target_type='random') 
         # The initial truck ages
-        if(path.isfile('instances/small_truck_ages.csv')):
-            InitialAge = pd.read_csv('instances/small_truck_ages.csv', sep=',', header=None).to_numpy().reshape(-1, )
-        else:
-            InitialAge = self.get_initial_ages(n_trucks, max_age=20000, ages_type='random')
-            np.savetxt('instances/small_truck_ages.csv', InitialAge, delimiter=",")
-
+        InitialAge = self.load_initial_truck_ages('small_truck_ages.csv', n_trucks, ages_type='random')
         # The critical age bin adjusted for each truck
-        if(path.isfile('instances/small_critical_bins.csv')):
-            c_critical = pd.read_csv('instances/small_critical_bins.csv', sep=',', header=None).to_numpy().reshape(-1, )
-        else:
-            c_critical = self.get_critical_bins(InitialAge, default_critical_bin=20, bin_size=M)
-            np.savetxt('instances/small_critical_bins.csv', c_critical, delimiter=",", fmt='%d')
-    
+        c_critical = self.load_critical_bins('small_critical_bins.csv', InitialAge, M, 10)
         # Discounted cost value for truck T at age bin B and period T
-        if(path.isfile('instances/small_maintenance_cost.csv')):
-            C_file = pd.read_csv('instances/small_maintenance_cost.csv', sep=',', header=None).to_numpy()
-            C = np.zeros((n_trucks, n_bins, n_years))
-            for i in range(C_file.shape[0]):
-                t, b, y, value = C_file[i, :]
-                C[int(t), int(b), int(y)] = value
-        else:
-            C = self.get_cost_matrix(n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
-            C_toFile = []
-            for t in range(n_trucks):
-                for b in range(n_bins):
-                    for y in range(n_years):
-                        C_toFile.append([t,b,y,C[t,b,y]])
+        C = self.load_cost_matrix('small_maintenance_cost.csv', n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
 
-            np.savetxt('instances/small_maintenance_cost.csv', np.array(C_toFile), delimiter=",")
+        
+        return n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAge
+
+    def get_average_instance(self):
+        n_trucks = 20 # The number of trucks
+        n_years = 5 # The time period
+        n_bins = 20 # The number of age bins
+        max_planned_production = 365 * 24 * n_trucks # the entire year non stop
+        min_truck_availability = max_planned_production / n_trucks
+        M = 4000
+        
+        # Engine rebuild cost
+        FE = [750000] * n_trucks
+        # Available truck hours per period T
+        A = self.load_available_truck_hours('average_availability.csv', n_trucks, n_years, min_truck_availability)
+        # The required truck hours for a given time period y
+        R = self.load_production_targets('average_targets.csv', n_years, max_planned_production, target_type='random') 
+        # The initial truck ages
+        InitialAge = self.load_initial_truck_ages('average_truck_ages.csv', n_trucks, ages_type='random')
+        # The critical age bin adjusted for each truck
+        c_critical = self.load_critical_bins('average_critical_bins.csv', InitialAge, M, 10)
+        # Discounted cost value for truck T at age bin B and period T
+        C = self.load_cost_matrix('average_maintenance_cost.csv', n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
         
         return n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAge
 
@@ -192,50 +191,15 @@ class TruckMaintenanceProblemInstanceFactory:
         # Engine rebuild cost
         FE = [750000] * n_trucks
         # Available truck hours per period T
-        if(path.isfile('instances/large_availability.csv')):
-            A = pd.read_csv('instances/large_availability.csv', sep=',', header=None).to_numpy()
-        else:
-            A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availability, size = (n_trucks, n_years))
-            np.savetxt('instances/large_availability.csv', A, delimiter=",")
-
+        A = self.load_available_truck_hours('large_availability.csv', n_trucks, n_years, min_truck_availability)
         # The required truck hours for a given time period y
-        if(path.isfile('instances/large_targets.csv')):
-            R = pd.read_csv('instances/large_targets.csv', sep=',', header=None).to_numpy().reshape(-1, )
-        else:
-            R = self.get_production_targets(n_years, max_planned_production, target_type='random')
-            np.savetxt('instances/large_targets.csv', R, delimiter=",")
-        
+        R = self.load_production_targets('large_targets.csv', n_years, max_planned_production, target_type='random') 
         # The initial truck ages
-        if(path.isfile('instances/large_truck_ages.csv')):
-            InitialAge = pd.read_csv('instances/large_truck_ages.csv', sep=',', header=None).to_numpy().reshape(-1, )
-        else:
-            InitialAge = self.get_initial_ages(n_trucks, ages_type='random')
-            np.savetxt('instances/large_truck_ages.csv', InitialAge, delimiter=",")
-
+        InitialAge = self.load_initial_truck_ages('large_truck_ages.csv', n_trucks, ages_type='random')
         # The critical age bin adjusted for each truck
-        if(path.isfile('instances/large_critical_bins.csv')):
-            c_critical = pd.read_csv('instances/large_critical_bins.csv', sep=',', header=None).to_numpy().reshape(-1, )
-        else:
-            c_critical = self.get_critical_bins(InitialAge, bin_size=M)
-            np.savetxt('instances/large_critical_bins.csv', c_critical, delimiter=",", fmt='%d')
-    
-
+        c_critical = self.load_critical_bins('large_critical_bins.csv', InitialAge, M)
         # Discounted cost value for truck T at age bin B and period T
-        if(path.isfile('instances/large_maintenance_cost.csv')):
-            C_file = pd.read_csv('instances/large_maintenance_cost.csv', sep=',', header=None).to_numpy()
-            C = np.zeros((n_trucks, n_bins, n_years))
-            for i in range(C_file.shape[0]):
-                t, b, y, value = C_file[i, :]
-                C[int(t), int(b), int(y)] = value
-        else:
-            C = self.get_cost_matrix(n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
-            C_toFile = []
-            for t in range(n_trucks):
-                for b in range(n_bins):
-                    for y in range(n_years):
-                        C_toFile.append([t,b,y,C[t,b,y]])
-
-            np.savetxt('instances/large_maintenance_cost.csv', np.array(C_toFile), delimiter=",")
+        C = self.load_cost_matrix('large_maintenance_cost.csv', n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
 
         return n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAge
 
@@ -250,58 +214,79 @@ class TruckMaintenanceProblemInstanceFactory:
         # Engine rebuild cost
         FE = [750000] * n_trucks
         # Available truck hours per period T
-        if(path.isfile('instances/paper_availability.csv')):
-            A = pd.read_csv('instances/paper_availability.csv', sep=',', header=None).to_numpy()
+        A = self.load_available_truck_hours('paper_availability.csv', n_trucks, n_years, min_truck_availability)
+        # The required truck hours for a given time period y
+        R = self.load_production_targets('paper_targets.csv', n_years, max_planned_production, target_type='paper') 
+        # The initial truck ages
+        InitialAge = self.load_initial_truck_ages('paper_truck_ages.csv', n_trucks, ages_type='paper')
+        # The critical age bin adjusted for each truck
+        c_critical = self.load_critical_bins('paper_critical_bins.csv', InitialAge, M)
+        # Discounted cost value for truck T at age bin B and period T
+        C = self.load_cost_matrix('paper_maintenance_cost.csv', n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
+        return n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAge
+
+    def load_available_truck_hours(self, file_name, n_trucks, n_years, min_truck_availability):
+        full_path = 'instances/{}'.format(file_name)
+        if(path.isfile(full_path)):
+            A = pd.read_csv(full_path, sep=',', header=None).to_numpy()
         else:
             A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availability, size = (n_trucks, n_years))
-            np.savetxt('instances/paper_availability.csv', A, delimiter=",")
+            np.savetxt(full_path, A, delimiter=",")
+        return A
 
-        # The required truck hours for a given time period y
-        if(path.isfile('instances/paper_targets.csv')):
-            R = pd.read_csv('instances/paper_targets.csv', sep=',', header=None).to_numpy().reshape(-1, )
+    def load_production_targets(self, file_name, n_years, max_planned_production, target_type):
+        full_path = 'instances/{}'.format(file_name)
+        if(path.isfile(full_path)):
+            R = pd.read_csv(full_path, sep=',', header=None).to_numpy().reshape(-1, )
         else:
-            R = self.get_production_targets(n_years, max_planned_production, target_type='paper')
-            np.savetxt('instances/paper_targets.csv', R, delimiter=",")
-        
-        # The initial truck ages
-        if(path.isfile('instances/paper_truck_ages.csv')):
-            InitialAge = pd.read_csv('instances/paper_truck_ages.csv', sep=',', header=None).to_numpy().reshape(-1, )
-        else:
-            InitialAge = self.get_initial_ages(n_trucks, ages_type='paper')
-            np.savetxt('instances/paper_truck_ages.csv', InitialAge, delimiter=",")
+            R = self.get_production_targets(n_years, max_planned_production, target_type=target_type)
+            np.savetxt(full_path, R, delimiter=",")
+        return R
 
-        # The critical age bin adjusted for each truck
-        if(path.isfile('instances/paper_critical_bins.csv')):
-            c_critical = pd.read_csv('instances/paper_critical_bins.csv', sep=',', header=None).to_numpy().reshape(-1, )
+    def load_critical_bins(self, file_name, InitialAge, M, default_critical_bin = 14):
+        full_path = 'instances/{}'.format(file_name)
+        if(path.isfile(full_path)):
+            c_critical = pd.read_csv(full_path, sep=',', header=None).to_numpy().reshape(-1, )
         else:
-            c_critical = self.get_critical_bins(InitialAge, bin_size=M)
-            np.savetxt('instances/paper_critical_bins.csv', c_critical, delimiter=",", fmt='%d')
-    
+            c_critical = self.get_critical_bins(InitialAge, default_critical_bin=default_critical_bin, bin_size=M)
+            np.savetxt(full_path, c_critical, delimiter=",", fmt='%d')
 
-        # Discounted cost value for truck T at age bin B and period T
-        if(path.isfile('instances/paper_maintenance_cost.csv')):
-            C_file = pd.read_csv('instances/paper_maintenance_cost.csv', sep=',', header=None).to_numpy()
+        return c_critical
+
+    def load_initial_truck_ages(self, file_name, n_trucks, ages_type):
+        full_path = 'instances/{}'.format(file_name)
+        if(path.isfile(full_path)):
+            InitialAge = pd.read_csv(full_path, sep=',', header=None).to_numpy().reshape(-1, )
+        else:
+            InitialAge = self.get_initial_ages(n_trucks, ages_type=ages_type)
+            np.savetxt(full_path, InitialAge, delimiter=",")
+        return InitialAge
+
+    def load_cost_matrix(self, file_name, n_trucks, n_bins, n_years, cost_type, critical_bins):
+        full_path = 'instances/{}'.format(file_name)
+        if(path.isfile(full_path)):
+            C_file = pd.read_csv(full_path, sep=',', header=None).to_numpy()
             C = np.zeros((n_trucks, n_bins, n_years))
             for i in range(C_file.shape[0]):
                 t, b, y, value = C_file[i, :]
                 C[int(t), int(b), int(y)] = value
         else:
-            C = self.get_cost_matrix(n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
+            C = self.get_cost_matrix(n_trucks, n_bins, n_years, cost_type=cost_type, critical_bins=critical_bins)
             C_toFile = []
             for t in range(n_trucks):
                 for b in range(n_bins):
                     for y in range(n_years):
                         C_toFile.append([t,b,y,C[t,b,y]])
 
-            np.savetxt('instances/paper_maintenance_cost.csv', np.array(C_toFile), delimiter=",")
-      
-        return n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAge
+            np.savetxt(full_path, np.array(C_toFile), delimiter=",")
+        
+        return C
 
     def get_cost_matrix(self, n_trucks, n_bins, n_years, cost_type='random', default_critical_bin = 15, critical_bins = []):
         if(cost_type == 'random'):
             return 100 * np.random.random((n_trucks, n_bins, n_years))
         if(cost_type == 'increasing'):
-            means = np.linspace(1, 10, n_bins)
+            means = np.linspace(2, 10, n_bins)
             C = np.zeros((n_trucks, n_bins, n_years))
 
             for t in range(n_trucks):
@@ -328,7 +313,7 @@ class TruckMaintenanceProblemInstanceFactory:
             return np.random.randint(low=0, high=max_age, size = n_trucks)
         if(ages_type == 'zero'):
             return np.zeros(n_trucks)
-        if(ages_type == 'paper'): 
+        if((ages_type == 'paper') & (n_trucks == 34)): 
             return [43055, 43864, 42595, 43141, 43570, 42659, 42603, 42162, 42214, 42555, 42213, 41259, 42180, 41122, 41216, 41472, 41495, 41571, 37766, 37936, 32033, 32503, 32479, 30384, 21762, 21686, 21310, 16585, 16734, 16311, 15682, 0, 0, 0]
 
     def get_critical_bins(self, ages, default_critical_bin = 14, bin_size = 5000):
@@ -339,31 +324,63 @@ n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get
 
 # Plot the cost matrix
 fig, ax = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(12,8))
-ax[0,0].plot(C[0,:,0])
-ax[0,1].plot(C[1,:,0])
-ax[1,0].plot(C[2,:,0])
-ax[1,1].plot(C[3,:,0])
+ax[0,0].plot(np.arange(n_bins) * M + InitialAges[0], C[0,:,0])
+ax[0,1].plot(np.arange(n_bins) * M + InitialAges[1], C[1,:,0])
+ax[1,0].plot(np.arange(n_bins) * M + InitialAges[2], C[2,:,0])
+ax[1,1].plot(np.arange(n_bins) * M + InitialAges[3], C[3,:,0])
 
-ax[0,0].set_title('Caminhão #1')
-ax[0,1].set_title('Caminhão #2')
-ax[1,0].set_title('Caminhão #3')
-ax[1,1].set_title('Caminhão #4')
+ax[0,0].set_title('Truck #1')
+ax[0,1].set_title('Truck #2')
+ax[1,0].set_title('Truck #3')
+ax[1,1].set_title('Truck #4')
 
-fig.suptitle('Custo de manutenção [$/hora] por faixa de idade')
+ax[0,0].set_ylabel('Cost [$/hour]')
+ax[1,0].set_ylabel('Cost [$/hour]')
+
+ax[1,0].set_xlabel('Age [hours]')
+ax[1,1].set_xlabel('Age [hours]')
+
+ax[0, 0].axvline(InitialAges[0], color='red')
+ax[0, 1].axvline(InitialAges[1], color='red')
+ax[1, 0].axvline(InitialAges[2], color='red')
+ax[1, 1].axvline(InitialAges[3], color='red')
+
+# ax[1,0].set_xticks(range(n_bins))
+# ax[1,1].set_xticks(range(n_bins))
+
 plt.show()
 
 # Solve
 small_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 small_instance.init_model(C, c_critical, FE, A, M, R)
-small_instance.solve(gap=0.00001)
+small_instance.solve()
 small_instance.report_results(c_critical, InitialAges)
-# %%
+
+# %% AVERAGE INSTANCE
+factory = TruckMaintenanceProblemInstanceFactory()
+n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_average_instance()
+
+# Solve
+small_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
+small_instance.init_model(C, c_critical, FE, A, M, R)
+small_instance.solve()
+small_instance.report_results(c_critical, InitialAges)
 # %% LARGE INSTANCE
 n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_large_instance()
 
 # Solve
 large_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 large_instance.init_model(C, c_critical, FE, A, M, R)
-large_instance.solve()
+large_instance.solve(gap=0.001)
 large_instance.report_results(c_critical, InitialAges)
+
+# %% PAPER INSTANCE
+n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_paper_instance()
+
+# Solve
+large_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
+large_instance.init_model(C, c_critical, FE, A, M, R)
+large_instance.solve(gap=0.001)
+large_instance.report_results(c_critical, InitialAges)
+
 # %%
