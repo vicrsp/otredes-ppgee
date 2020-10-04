@@ -272,7 +272,7 @@ class TruckMaintenanceProblemInstanceFactory:
         if(path.isfile(full_path)):
             A = pd.read_csv(full_path, sep=',', header=None).to_numpy()
         else:
-            A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availability, size = (n_trucks, n_years))
+            A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availability*0.95, size = (n_trucks, n_years))
             np.savetxt(full_path, A, delimiter=",")
         return A
 
@@ -401,7 +401,6 @@ small_instance.report_results(c_critical, InitialAges)
 small_instance.progress.plot_progress()
 
 # %% AVERAGE INSTANCE
-factory = TruckMaintenanceProblemInstanceFactory()
 n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get_average_instance()
 
 # Solve
