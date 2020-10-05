@@ -54,6 +54,11 @@ def get_critical_bins(ages, default_critical_bin = 14, bin_size = 5000):
 FE = [750000] * n_trucks
 # Available truck hours per period T
 A = np.random.randint(low=min_truck_availability*0.9, high=min_truck_availability, size = (n_trucks, n_years))
+#np.ones((n_trucks, n_years)) * min_truck_availability
+# Maximum available truck hours at age bin V
+#M = np.arange(start=1, stop=n_bins+1) * age_bin_size
+# The cumulative used hours for truck t at time period t
+# H = np.random.randint(low=0, high=1000, size = (n_trucks, n_years))
 # The required truck hours for a given time period y
 R = get_production_targets(n_years, target_type='random')
 # The initial truck ages
@@ -94,6 +99,14 @@ for t in range(n_trucks):
     for b in range(n_bins): 
         model.add_constraint(model.sum(x[t,b,y] for y in range(n_years)) <= M)
 
+# (3) - Accumulated truck age
+# for y in range(n_years):
+#     for t in range(n_trucks):
+#         if(y == 0):
+#             model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + InitialAge[t] == h[t,y])
+#         else:
+#             model.add_constraint(model.sum(x[t,b,y] for b in range(n_bins)) + h[t,y-1] == h[t,y])
+
 # (4) - Correct bin order (lower bound)
 for t in range(n_trucks):
     for b in range(n_bins): 
@@ -109,6 +122,10 @@ for t in range(n_trucks):
 # (6) - Required truck yours per year
 for y in range(n_years):
     model.add_constraint(model.sum(x[t,b,y] for t in range(n_trucks) for b in range(n_bins)) == R[y])
+
+# # (7) Ensure a truck does not operate more than 100,000 hours
+# for t in range(n_trucks):
+#    model.add_constraint(h[t, n_years-1] <= M * n_bins)
 
 
 #%% SOLVE
@@ -126,7 +143,10 @@ if(solution):
     image_hours = np.zeros((n_years, n_trucks))
     image_bins = np.zeros((n_bins, n_trucks))
     image_y_critical = np.zeros((n_years, n_trucks))
-   
+    # for i in range(n_years):
+    #     for j in range(n_trucks):
+    #         image_h[i,j] = model.get_var_by_name('h_{}_{}'.format(j,i))
+
     for i in range(n_years):        
         for j in range(n_trucks):
             hours = 0

@@ -7,6 +7,8 @@ import seaborn as sns
 import pandas as pd
 from os import path
 
+sns.set(font_scale=1.5)
+
 #%% PROBLEM DEFINITION
 
 class MIPProgress(ProgressListener):
@@ -106,14 +108,16 @@ class TruckMaintenanceProblem:
         self.model.parameters.timelimit = max_time
         self.solution = self.model.solve(log_output=log)
 
-    def report_results(self, c_critical, InitialAge):
+    def report_results(self, c_critical, InitialAge, prefix='instance'):
         if(self.solution):
             self.model.report()
             self.model.print_information()
-            #model.print_solution()
-
+            
             # Plot the accumulated hours
-            _, ax = plt.subplots(4,1, figsize=(16,10))
+            fig, ax = plt.subplots(1,1, figsize=(16,10))
+            fig2, ax2 = plt.subplots(1,1, figsize=(8,6))
+            fig3, ax3 = plt.subplots(1,1, figsize=(16,10))
+            fig4, ax4 = plt.subplots(1,1, figsize=(16,10))
 
             image_h = np.zeros((self.n_years, self.n_trucks))
             image_hours = np.zeros((self.n_years, self.n_trucks))
@@ -140,35 +144,44 @@ class TruckMaintenanceProblem:
 
             image_h = np.tile(InitialAge, (self.n_years, 1)) + np.cumsum(image_hours, axis=0)
             
-            sns.heatmap((image_h/1000).astype(int), annot=True, ax=ax[0], fmt='d')
-            sns.heatmap((image_hours/1000).astype(int), annot=True,ax=ax[1])
-            sns.heatmap((image_bins/1000).astype(int), annot=True, ax=ax[2])
-            sns.heatmap(image_y_critical , annot=True, ax=ax[3])
+            sns.heatmap((image_h/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)), annot=True, ax=ax, fmt='d', annot_kws={"size": 24})
+            sns.heatmap((image_hours/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)),annot=True,ax=ax3, fmt='d', annot_kws={"size": 24})
+            sns.heatmap((image_bins/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_bins+1)),annot=True, ax=ax4, fmt='d', annot_kws={"size": 24})
+            sns.heatmap(image_y_critical, xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)),annot=True, ax=ax2, annot_kws={"size": 24})
 
-            ax[0].set_ylabel('Year')
-            ax[0].set_title('Accumulated hours (x0.001)')
+            ax.set_ylabel('Ano')
+            ax.set_title('Horas acumuladas')
             
-            ax[1].set_ylabel('Year')
-            ax[1].set_title('Worked hours (x0.001)')
+            ax3.set_ylabel('Ano')
+            ax3.set_title('Horas alocadas')
             
-            ax[2].set_ylabel('Age bin')
-            ax[2].set_title('Hours per bin (x0.001)')
+            ax4.set_ylabel('Faixa de idade')
+            ax4.set_title('Horas por faixa')
+            ax4.set_xlabel('Caminhão')
 
-            ax[3].set_ylabel('Year')
-            ax[3].set_title('Trucks reaching critical hours')
+            ax2.set_ylabel('Ano')
+            ax2.set_xlabel('Caminhão')
+            ax2.set_title('Faixa crítica atingida')
 
 
             #ax[0].set_xlabel('# Caminhão')
-            #ax[1].set_xlabel('# Caminhão')
-            ax[3].set_xlabel('Truck #')
+            #ax[3].set_xlabel('Truck #')
 
             #fig.colorbar(ch, ax=ax[0])
             #fig.colorbar(cho, ax=ax[1])
             #fig.colorbar(chy, ax=ax[2])
-
-
-            plt.tight_layout()
+            # plt.tight_layout()
             plt.show()
+
+            fig.tight_layout()
+            fig2.tight_layout()
+            fig3.tight_layout()
+            fig4.tight_layout()
+
+            fig.savefig('images/{}_solution_accumulated.png'.format(prefix))
+            fig2.savefig('images/{}_critical.png'.format(prefix))
+            fig3.savefig('images/{}_solution_values.png'.format(prefix))
+            fig4.savefig('images/{}_solutions_bins.png'.format(prefix))
 
 #%% INSTANCE FACTORY
 class TruckMaintenanceProblemInstanceFactory: 
@@ -190,9 +203,9 @@ class TruckMaintenanceProblemInstanceFactory:
         # The required truck hours for a given time period y
         R = self.load_production_targets('small_targets.csv', n_years, max_planned_production, target_type='random') 
         # The initial truck ages
-        InitialAge = self.load_initial_truck_ages('small_truck_ages.csv', n_trucks, ages_type='random')
+        InitialAge = self.load_initial_truck_ages('small_truck_ages.csv', n_trucks, max_age=10000, ages_type='random')
         # The critical age bin adjusted for each truck
-        c_critical = self.load_critical_bins('small_critical_bins.csv', InitialAge, M, 10)
+        c_critical = self.load_critical_bins('small_critical_bins.csv', InitialAge, M, 8)
         # Discounted cost value for truck T at age bin B and period T
         C = self.load_cost_matrix('small_maintenance_cost.csv', n_trucks, n_bins, n_years, cost_type='increasing', critical_bins=c_critical)
 
@@ -223,7 +236,7 @@ class TruckMaintenanceProblemInstanceFactory:
         return n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAge
 
     def get_large_instance(self):
-        n_trucks = 40 # The number of trucks
+        n_trucks = 45 # The number of trucks
         n_years = 10 # The time period
         n_bins = 20 # The number of age bins
         max_planned_production = 365 * 24 * n_trucks # the entire year non stop
@@ -295,12 +308,12 @@ class TruckMaintenanceProblemInstanceFactory:
 
         return c_critical
 
-    def load_initial_truck_ages(self, file_name, n_trucks, ages_type):
+    def load_initial_truck_ages(self, file_name, n_trucks, ages_type, max_age = 20000):
         full_path = 'instances/{}'.format(file_name)
         if(path.isfile(full_path)):
             InitialAge = pd.read_csv(full_path, sep=',', header=None).to_numpy().reshape(-1, )
         else:
-            InitialAge = self.get_initial_ages(n_trucks, ages_type=ages_type)
+            InitialAge = self.get_initial_ages(n_trucks, max_age=max_age, ages_type=ages_type)
             np.savetxt(full_path, InitialAge, delimiter=",")
         return InitialAge
 
@@ -328,7 +341,7 @@ class TruckMaintenanceProblemInstanceFactory:
         if(cost_type == 'random'):
             return 100 * np.random.random((n_trucks, n_bins, n_years))
         if(cost_type == 'increasing'):
-            means = np.linspace(2, 10, n_bins)
+            means = np.linspace(5, 15, n_bins) ** 2
             C = np.zeros((n_trucks, n_bins, n_years))
 
             for t in range(n_trucks):
@@ -337,16 +350,21 @@ class TruckMaintenanceProblemInstanceFactory:
                 for b in range(n_bins):
                     for y in range(n_years): 
                         if(b > critical_bin):
-                            mean_val = means[b-critical_bin] + np.random.standard_normal()
+                            mean_val = means[b-critical_bin] + np.random.standard_normal() * 10
                         else:
-                            mean_val = means[b + offset] + np.random.standard_normal() 
+                            mean_val = means[b + offset] + np.random.standard_normal() * 10
                         C[t,b,y] = mean_val 
             
         return C
 
     def get_production_targets(self,n_years,planned_production, target_type='random'):
         if(target_type=='random'):
-            return np.random.randint(low=0.7*planned_production, high=planned_production*0.8, size=n_years)
+            scale = np.ones(n_years)
+            # reduce the value of the last years
+            if(n_years > 3):
+                scale[-2] = 0.5
+                scale[-1] = 0.1
+            return (np.random.randint(low=0.7*planned_production, high=planned_production*0.8, size=n_years) * scale).astype(int)
         if((target_type=='paper') & (n_years == 10)):
             return [221050, 220300, 232500, 231500, 232600, 230000, 220000, 200000, 106300, 25000]
 
@@ -367,37 +385,42 @@ n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get
 
 # Plot the cost matrix
 fig, ax = plt.subplots(2, 2, sharex=True, sharey=True, figsize=(12,8))
-ax[0,0].plot(np.arange(n_bins) * M + InitialAges[0], C[0,:,0])
-ax[0,1].plot(np.arange(n_bins) * M + InitialAges[1], C[1,:,0])
-ax[1,0].plot(np.arange(n_bins) * M + InitialAges[2], C[2,:,0])
-ax[1,1].plot(np.arange(n_bins) * M + InitialAges[3], C[3,:,0])
 
-ax[0,0].set_title('Truck #1')
-ax[0,1].set_title('Truck #2')
-ax[1,0].set_title('Truck #3')
-ax[1,1].set_title('Truck #4')
+[ax[0,0].plot(np.arange(n_bins) * M + InitialAges[0], C[0,:,i]) for i in range(n_years)]
+[ax[0,1].plot(np.arange(n_bins) * M + InitialAges[1], C[1,:,i]) for i in range(n_years)]
+[ax[1,0].plot(np.arange(n_bins) * M + InitialAges[2], C[2,:,i]) for i in range(n_years)]
+[ax[1,1].plot(np.arange(n_bins) * M + InitialAges[3], C[3,:,i]) for i in range(n_years)]
 
-ax[0,0].set_ylabel('Cost [$/hour]')
-ax[1,0].set_ylabel('Cost [$/hour]')
+ax[0,0].set_title('Caminhão #1')
+ax[0,1].set_title('Caminhão #2')
+ax[1,0].set_title('Caminhão #3')
+ax[1,1].set_title('Caminhão #4')
 
-ax[1,0].set_xlabel('Age [hours]')
-ax[1,1].set_xlabel('Age [hours]')
+ax[0,0].set_ylabel('Custo de manutenção [$/hora]')
+ax[1,0].set_ylabel('Custo de manutenção [$/hora]')
 
-ax[0, 0].axvline(InitialAges[0], color='red')
-ax[0, 1].axvline(InitialAges[1], color='red')
-ax[1, 0].axvline(InitialAges[2], color='red')
-ax[1, 1].axvline(InitialAges[3], color='red')
+ax[1,0].set_xlabel('Idade [horas]')
+ax[1,1].set_xlabel('Idade [horas]')
+
+# ax[0, 0].axvline(InitialAges[0], color='red')
+# ax[0, 1].axvline(InitialAges[1], color='red')
+# ax[1, 0].axvline(InitialAges[2], color='red')
+# ax[1, 1].axvline(InitialAges[3], color='red')
+ax[0,0].legend(['Ano 1','Ano 2','Ano 3'])
+ax[0,1].legend(['Ano 1','Ano 2','Ano 3'])
+ax[1,0].legend(['Ano 1','Ano 2','Ano 3'])
+ax[1,1].legend(['Ano 1','Ano 2','Ano 3'])
+plt.tight_layout()
+plt.show()
 
 # ax[1,0].set_xticks(range(n_bins))
 # ax[1,1].set_xticks(range(n_bins))
-
-plt.show()
 
 # Solve
 small_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 small_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
 small_instance.solve()
-small_instance.report_results(c_critical, InitialAges)
+small_instance.report_results(c_critical, InitialAges, 'small')
 small_instance.progress.plot_progress()
 
 # %% AVERAGE INSTANCE
@@ -407,10 +430,9 @@ n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get
 avg_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 avg_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
 avg_instance.solve()
-avg_instance.report_results(c_critical, InitialAges)
 
 # Report
-avg_instance.report_results(c_critical, InitialAges)
+avg_instance.report_results(c_critical, InitialAges, 'average')
 avg_instance.progress.plot_progress()
 
 # %% LARGE INSTANCE
@@ -419,8 +441,8 @@ n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get
 # Solve
 large_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 large_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
-large_instance.solve(gap=0.001, max_time=60 * 3)
-large_instance.report_results(c_critical, InitialAges)
+large_instance.solve(gap=0.01, max_time=60 * 15)
+large_instance.report_results(c_critical, InitialAges, 'large')
 large_instance.progress.plot_progress()
 
 # %% PAPER INSTANCE
@@ -429,10 +451,10 @@ n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get
 # Solve
 paper_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 paper_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
-paper_instance.solve(gap=0.001, max_time=60 * 10)
+paper_instance.solve(gap=0.01, max_time=60 * 15)
 
 # Report
-paper_instance.report_results(c_critical, InitialAges)
+paper_instance.report_results(c_critical, InitialAges, 'paper')
 paper_instance.progress.plot_progress()
 
 # %%
