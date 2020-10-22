@@ -7,7 +7,7 @@ import seaborn as sns
 import pandas as pd
 from os import path
 
-sns.set(font_scale=1.5)
+sns.set(font_scale=1.2)
 
 #%% PROBLEM DEFINITION
 
@@ -36,7 +36,7 @@ class MIPProgress(ProgressListener):
     
     def plot_progress(self):
         if(len(self.mip_gap) > 0):
-            _, ax = plt.subplots(2, 1)
+            _, ax = plt.subplots(2, 1, figsize=(10,8))
             ax[0].plot(self.time, self.mip_gap)
             ax[1].plot(self.time, self.current_objective)
 
@@ -101,9 +101,20 @@ class TruckMaintenanceProblem:
         for t in range(self.n_trucks):
             self.model.add_constraint(self.model.sum(self.x[t,b,y] for b in range(self.n_bins) for y in range(self.n_years)) <= M * self.n_bins - InitialAge[t])
     
-    def solve(self, log=True, gap = None, max_time = 60 * 10):
+    def solve(self, log=True, gap = None, max_time = 60 * 10, aggressive=False):
         if (gap != None):
             self.model.parameters.mip.tolerances.mipgap = gap
+
+        if(aggressive):
+            self.model.parameters.mip.strategy.probe = 3 # agressive probing
+            self.model.parameters.emphasis.mip = 3 # ephasis on solution quality
+            self.model.parameters.mip.strategy.lbheur = 1
+            # self.model.parameters.mip.cuts.cliques = 3
+            # self.model.parameters.mip.cuts.covers = 3
+            # self.model.parameters.mip.cuts.disjunctive = 3
+            # self.model.parameters.mip.cuts.flowcovers = 2
+            # self.model.parameters.mip.cuts.gomory = 2
+            # self.model.parameters.mip.cuts.pathcut = 2
 
         self.model.parameters.timelimit = max_time
         self.solution = self.model.solve(log_output=log)
@@ -144,10 +155,10 @@ class TruckMaintenanceProblem:
 
             image_h = np.tile(InitialAge, (self.n_years, 1)) + np.cumsum(image_hours, axis=0)
             
-            sns.heatmap((image_h/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)), annot=True, ax=ax, fmt='d', annot_kws={"size": 24})
-            sns.heatmap((image_hours/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)),annot=True,ax=ax3, fmt='d', annot_kws={"size": 24})
-            sns.heatmap((image_bins/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_bins+1)),annot=True, ax=ax4, fmt='d', annot_kws={"size": 24})
-            sns.heatmap(image_y_critical, xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)),annot=True, ax=ax2, annot_kws={"size": 24})
+            sns.heatmap((image_h/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)), annot=True, ax=ax, fmt='d', annot_kws={"size": 8})
+            sns.heatmap((image_hours/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)),annot=True,ax=ax3, fmt='d', annot_kws={"size": 8})
+            sns.heatmap((image_bins/1000).astype(int), xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_bins+1)),annot=True, ax=ax4, fmt='d', annot_kws={"size": 8})
+            sns.heatmap(image_y_critical, xticklabels=list(range(1,self.n_trucks+1)), yticklabels=list(range(1,self.n_years+1)),annot=True, ax=ax2, annot_kws={"size": 8})
 
             ax.set_ylabel('Ano')
             ax.set_title('Horas acumuladas')
@@ -201,9 +212,9 @@ class TruckMaintenanceProblemInstanceFactory:
         # Available truck hours per period T
         A = self.load_available_truck_hours('small_availability.csv', n_trucks, n_years, min_truck_availability)
         # The required truck hours for a given time period y
-        R = self.load_production_targets('small_targets.csv', n_years, max_planned_production, target_type='random') 
+        R = [25000, 25000, 25000, 25000]#self.load_production_targets('small_targets.csv', n_years, max_planned_production, target_type='random') 
         # The initial truck ages
-        InitialAge = self.load_initial_truck_ages('small_truck_ages.csv', n_trucks, max_age=10000, ages_type='random')
+        InitialAge = [0, 0, 8000, 8000] #self.load_initial_truck_ages('small_truck_ages.csv', n_trucks, max_age=10000, ages_type='random')
         # The critical age bin adjusted for each truck
         c_critical = self.load_critical_bins('small_critical_bins.csv', InitialAge, M, 8)
         # Discounted cost value for truck T at age bin B and period T
@@ -441,7 +452,7 @@ n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get
 # Solve
 large_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 large_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
-large_instance.solve(gap=0.01, max_time=60 * 15)
+large_instance.solve(gap=0.001, max_time=60 * 30)
 large_instance.report_results(c_critical, InitialAges, 'large')
 large_instance.progress.plot_progress()
 
@@ -451,7 +462,7 @@ n_trucks, n_bins, n_years, C, c_critical, FE, A, M, R, InitialAges = factory.get
 # Solve
 paper_instance = TruckMaintenanceProblem(n_trucks, n_bins, n_years)
 paper_instance.init_model(C, c_critical, FE, A, M, R, InitialAges)
-paper_instance.solve(gap=0.01, max_time=60 * 15)
+paper_instance.solve(gap=0.01, max_time=60 * 30, aggressive=False)
 
 # Report
 paper_instance.report_results(c_critical, InitialAges, 'paper')
