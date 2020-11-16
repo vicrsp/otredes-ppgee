@@ -1,0 +1,553 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Beamer Presentation
+% LaTeX Template
+% Version 1.0 (10/11/12)
+%
+% This template has been downloaded from:
+% http://www.LaTeXTemplates.com
+%
+% License:
+% CC BY-NC-SA 3.0 (http://creativecommons.org/licenses/by-nc-sa/3.0/)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%----------------------------------------------------------------------------------------
+%	PACKAGES AND THEMES
+%----------------------------------------------------------------------------------------
+
+\documentclass{beamer}
+
+\mode<presentation> {
+
+% The Beamer class comes with a number of default slide themes
+% which change the colors and layouts of slides. Below this is a list
+% of all the themes, uncomment each in turn to see what they look like.
+
+%\usetheme{default}
+%\usetheme{AnnArbor}
+%\usetheme{Antibes}
+%\usetheme{Bergen}
+%\usetheme{Berkeley}
+%\usetheme{Berlin}
+%\usetheme{Boadilla}
+%\usetheme{CambridgeUS}
+%\usetheme{Copenhagen}
+%\usetheme{Darmstadt}
+%\usetheme{Dresden}
+\usetheme{Frankfurt}
+%\usetheme{Goettingen}
+%\usetheme{Hannover}
+%\usetheme{Ilmenau}
+%\usetheme{JuanLesPins}
+%\usetheme{Luebeck}
+%\usetheme{Madrid}
+%\usetheme{Malmoe}
+%\usetheme{Marburg}
+%\usetheme{Montpellier}
+%\usetheme{PaloAlto}
+%\usetheme{Pittsburgh}
+%\usetheme{Rochester}
+%\usetheme{Singapore}
+%\usetheme{Szeged}
+%\usetheme{Warsaw}
+
+% As well as themes, the Beamer class has a number of color themes
+% for any slide theme. Uncomment each of these in turn to see how it
+% changes the colors of your current slide theme.
+
+%\usecolortheme{albatross}
+%\usecolortheme{beaver}
+%\usecolortheme{beetle}
+%\usecolortheme{crane}
+%\usecolortheme{dolphin}
+%\usecolortheme{dove}
+%\usecolortheme{fly}
+%\usecolortheme{lily}
+%\usecolortheme{orchid}
+%\usecolortheme{rose}
+%\usecolortheme{seagull}
+%\usecolortheme{seahorse}
+%\usecolortheme{whale}
+%\usecolortheme{wolverine}
+
+%\setbeamertemplate{footline} % To remove the footer line in all slides uncomment this line
+%\setbeamertemplate{footline}[page number] % To replace the footer line in all slides with a simple slide count uncomment this line
+
+%\setbeamertemplate{navigation symbols}{} % To remove the navigation symbols from the bottom of all slides uncomment this line
+}
+
+\usepackage{graphicx} % Allows including images
+\usepackage{booktabs} % Allows the use of \toprule, \midrule and \bottomrule in tables
+\usepackage[brazil]{babel}
+\usepackage{amsmath}
+\usepackage{multirow}
+\usepackage[version=4]{mhchem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{tikz}
+
+%----------------------------------------------------------------------------------------
+%	TITLE PAGE
+%----------------------------------------------------------------------------------------
+
+\title[Otimização em Redes 2020/1]{Otimização da programação de frota de caminhões de mina minimizando custos de manutenção} % The short title appears at the bottom of every slide, the full title is only on the title page
+
+\author{Victor Ruela} % Your name
+\institute[PPGEE - UFMG] % Your institution as it will appear on the bottom of every slide, may be shorthand to save space
+{
+Programa de Pós-Graduação em Engenharia Elétrica\\ Universidade Federal de Minas Gerais \\ % Your institution for the title page
+\medskip
+\textit{victorspruela@ufmg.br} % Your email address
+}
+\date{\today} % Date, can be changed to a custom date
+
+\begin{document}
+
+\begin{frame}
+\titlepage % Print the title page as the first slide
+\end{frame}
+
+\begin{frame}
+\frametitle{Agenda} % Table of contents slide, comment this block out to remove it
+\tableofcontents % Throughout your presentation, if you choose to use \section{} and \subsection{} commands, these will automatically be printed on this slide as an overview of your presentation
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+%	PRESENTATION SLIDES
+%----------------------------------------------------------------------------------------
+
+%------------------------------------------------
+\section{Introdução} % Sections can be created in order to organize your presentation into discrete blocks, all sections and subsections are automatically printed in the table of contents as an overview of the talk
+%------------------------------------------------
+
+%\subsection{Sistemas de otimização em tempo-real} % A subsection can be created just before a set of slides with a common theme to further break down your presentation into chunks
+
+\begin{frame}
+	\frametitle{Motivação}
+	\begin{itemize}
+		\item O custo de equipamentos para operação de uma mina gira em torno de centenas de milhões de dólares 
+		\item Um investimento deste tamanho necessita que eles sejam utilizados da melhor forma ao longo do tempo, de forma que os custos de operação sejam minimizados e a sua utilização maximizada
+		\item A manutenção da frota de caminhões de transporte é um dos maiores custos envolvidos, podendo atingir 100 milhões de dólares anualmente
+		\item Logo, o uso de modelos de otimização para encontrar a melhor utilização da frota que minimize os custos de manutenção possui grande potencial de redução nos custos da operação
+	\end{itemize}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Objetivo}
+	\begin{itemize}
+		\item Implementar o modelo de otimização da programação de frota de caminhões em minas de céu aberto através da minimização do custo da manutenção presente na literatura proposto em \cite{topal2010a}
+	\end{itemize}
+\end{frame}
+
+%------------------------------------------------
+\section{Metodologia}
+%------------------------------------------------
+\subsection{Formulação do Problema}
+\begin{frame}
+	\frametitle{Definições preliminares}
+	\begin{columns}[c] % The "c" option specifies centered vertical alignment while the "t" option is used for top vertical alignment
+		
+		\column{.45\textwidth} % Left column and width
+		\begin{small}
+			\begin{table}[h!]
+				\begin{tabular}{p{0.5cm}p{1.5in}}
+					\multicolumn{2}{l}{\textbf{Índices}}                                                            \\                           
+					$t$                & Identificador do caminhão            \\
+					$b$                & Faixas de idade           \\
+					$y$                & Período de tempo (anos)   \\
+					$c$                & Faixa de operação crítica \\ & \\
+					\multicolumn{2}{l}{\textbf{Variáveis de decisão}}                                                            \\
+					$X_{t,b,y}$ & Número de horas alocadas para o caminhão $t$, faixa de idade $b$ no $y$-ésimo período de tempo \\
+					$Y_{t,b,y}$ & 1, se o caminão $t$ na faixa $b$ utilizou todas as horas disponíveis no período de tempo $y$                                      
+				\end{tabular}
+			\end{table}
+		\end{small}
+		\column{.55\textwidth} % Right column and width
+			\begin{small}
+				\begin{table}[h!]
+				\begin{tabular}{p{0.5cm}p{2in}}
+					\multicolumn{2}{l}{\textbf{Parâmetros}}                                                                                             \\
+					$C_{t,b,y}$        & Custo de manutenção (\$/hora) 
+					para um caminhão $t$ na faixa $b$ no $y$-ésimo período de tempo \\
+					$FE_t$               & Custo de reparo do motor do caminhão $t$                                                     \\
+					$A_{t,y}$          & Horas disponíveis do caminhão $t$ no período de tempo $y$                                      \\
+					M                   & Tamanho da faixa de idade (horas)                                                          \\
+					$R_y$                & Total de horas de operação para um período de tempo $y$ \\
+					$I_t$ & Idade inicial dos caminhão $t$ \\                                 
+				\end{tabular}
+			\end{table}
+		\end{small}
+		
+	\end{columns}
+\end{frame}	
+
+\begin{frame}
+\frametitle{Formulação}
+
+\textbf{Minimizar}
+\begin{equation}
+	\sum_{y \in Y}^{}\sum_{t \in T}^{}\sum_{b \in B}^{}X_{t,b,y}C_{t,b,y} + \sum_{y \in Y}^{}\sum_{t \in T}^{}Y_{t,c,y}FE_t 
+\end{equation}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Formulação}
+	\textbf{Sujeito a}
+	\begin{small}
+		\begin{align}
+		&	\sum_{b \in B}^{}X_{t,b,y} \leq A_{t,y},\: \: \forall t \in T \:, \: \forall y\in Y \\
+		&	\sum_{y \in Y}^{}X_{t,b,y} \leq M,\: \forall t \in T \:, \forall b \in B \\
+		&	\sum_{k=1}^{y}X_{t,b,y} \geq MY_{t,b,y},\: \forall t \in T \:, \forall b \in B, \: \forall y\in Y \\
+		&	X_{t,(b+1),y} \geq M \sum_{k=1}^{y}Y_{t,b,k},\: \forall t \in T \:, \forall b \in B, \: \forall y\in Y \\
+		&	\sum_{t \in T}^{}\sum_{b \in B}^{}X_{t,b,y} = R_y ,\: \forall y \in Y \\
+		&	\sum_{y \in Y}^{}\sum_{b \in B}^{}X_{t,b,y} \leq Mb_{max} - I_t ,\: \forall t \in T 
+		\end{align}
+	\end{small}
+\end{frame}
+
+\subsection{Geração das instâncias}
+\begin{frame}
+	\frametitle{Geração das instâncias}
+	\begin{itemize}
+		\item Analisando as informações contidas em \cite{topal2010a}, constatou-se que os dados de disponibilidade e custo de manutenção dos caminhões estão incompletos, de forma que a instância executada pelo autor não possa ser replicada.
+		\item Infelizmente, os dados de custo de manutenção e de planejamento de longo prazo também não estavam disponíveis para minas reais
+		\item Então optou-se por gerar alguns destes valores de forma artificial, seguindo as recomendações da literatura
+	\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+	\frametitle{Disponibilidade e idade dos caminhões}
+	\begin{block}{Disponibilidade}
+		\begin{equation}
+			A_{t,y} \sim \mathcal{U}_{[0.9, 0.95]} * 365 * 24
+			\label{eq:disp}
+		\end{equation}
+	\end{block}
+
+	\begin{block}{Idade dos caminhões}
+		\begin{equation}
+			I_{t} \sim \mathcal{U}_{[0, 20000]} 
+			\label{eq:it}
+		\end{equation}
+	\end{block}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Produção anual}
+	\begin{block}{Produção anual}
+		\begin{equation}
+			R_y \sim \mathcal{U}_{[0.7, 0.8]} * 365 * 24 * t_{max}
+			\label{eq:prod}
+		\end{equation}
+	\end{block}
+
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=3.0in]{prod_targets.png}
+		\caption{Exemplo de produção anual}
+		\label{fig:prod_targets}
+	\end{figure}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Custo de manutenção}
+	\begin{itemize}
+		\item Os custos de manutenção variam de forma não-linear de acordo com a idade do caminhão e tendem a aumentar até um ponto onde um grande reparo é necessário \cite{nakousi2018}
+	\end{itemize}	
+
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=0.7\linewidth]{custos_manutencao.png}
+		\caption{Exemplo de curva de custos de manutenção em função da idade}
+		\label{fig:custo_manut}
+	\end{figure}
+
+\end{frame}
+
+\subsection{Método de solução}
+
+\begin{frame}
+	\frametitle{Método de solução}
+	\begin{itemize}
+		\item Como foi formulado um problema de programação linear inteiro de larga escala e com muitas restrições, ele será resolvido utilizando o algoritmo Branch \& Cut com o CPLEX
+		\item Implementado na linguagem de programação Python versão 3.7.7
+		\item Executado em um notebook com Intel Core i7 Quad Core 2.4GHz, 8GB de memória RAM
+	\end{itemize}
+\end{frame}
+
+
+\subsection{Desenho do experimento}
+
+\begin{frame}
+	\frametitle{Desenho do experimento}
+	O algoritmo será avaliado sobre 4 instâncias distintas do problema.	O número de faixas de idade será igual a 20 para todas as instâncias.
+	\begin{table}[h!]
+	\caption{Valores de cada instância gerada}
+	\label{tab:instances}
+	\centering
+	\begin{tabular}{l|c|c|c|c|}
+		\cline{2-5}
+		& \textbf{Pequena} & \textbf{Média} & \textbf{Grande} & \textbf{Artigo} \\ \hline
+		\multicolumn{1}{|l|}{\textbf{Caminhões}} & 5                & 20             & 45              & 34              \\ \hline
+		\multicolumn{1}{|l|}{\textbf{Anos}}      & 3                & 5              & 10              & 10              \\ \hline
+		\multicolumn{1}{|l|}{\textbf{M}}         & 2000             & 4000           & 5000            & 5000            \\ \hline
+		\multicolumn{1}{|l|}{\textbf{Idade crítica}}         & 16000             & 40000           & 75000            & 	75000            \\ \hline
+	\end{tabular}
+	\end{table}
+	Na instância \textbf{Artigo}, serão considerados os valores disponíveis em \cite{topal2010a} para objetivos de produção, número de caminhões e suas respectivas idades inicias.
+	
+
+\end{frame}	
+
+\section{Resultados}
+
+\subsection{Pequena}
+\begin{frame}
+	\frametitle{Pequena}
+	\begin{itemize}
+		\item Um total de 480 variáveis de decisão e 567 restrições foram criadas para esta instância e o esforço computacional foi bem baixo para a sua solução, uma vez que o CPLEX encontrou o ótimo global em menos de 0.5 segundos.
+		\item As idades iniciais foram definidas como [0, 0, 8000 e 8000] e uma produção de 25000 horas por ano.
+	\end{itemize}
+\end{frame}
+
+
+\begin{frame}
+	\frametitle{Pequena}
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=0.8\linewidth]{small_costs.png}
+		\caption{Custos de manutenção por caminhão para a instância pequena}
+		\label{fig:small_costs}
+	\end{figure}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Pequena}
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=0.8\linewidth]{small_solutions_bins.png}
+		\caption{Alocação de horas por caminhão em cada faixa de idade para a instância pequena}
+		\label{fig:small_solutions_bins}
+	\end{figure}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Pequena}
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=0.8\linewidth]{small_solution_values.png}
+		\caption{Alocação de horas por caminhão em cada ano para a instância pequena}
+		\label{fig:small_solution_values}
+	\end{figure}
+\end{frame}
+
+\subsection{Média}
+
+
+\begin{frame}
+	\frametitle{Média}
+	\begin{itemize}
+		\item Total de 4000 variáveis de decisão e 4425 restrições
+		\item Esforço computacional de 3 segundos com o CPLEX
+	\end{itemize}
+\end{frame}
+
+%\begin{frame}
+%	\frametitle{Média}
+%	\begin{figure}[h!]
+%		\centering
+%		\includegraphics[width=0.8\linewidth]{average_solution_values.png}
+%		\caption{Alocação de horas por caminhão em cada ano para a instância média. Os valores estão em múltiplos de 1000 horas.}
+%		\label{fig:average_solution_values}
+%	\end{figure}
+%\end{frame}
+%
+%\begin{frame}
+%	\frametitle{Média}
+%	\begin{figure}[h!]
+%		\centering
+%		\includegraphics[width=0.8\linewidth]{average_solutions_bins.png}
+%		\caption{Alocação de horas por caminhão em cada faixa de idade para a instância média}
+%		\label{fig:average_solutions_bins}
+%	\end{figure}
+%\end{frame}
+
+
+\subsection{Grande}
+
+\begin{frame}
+	\frametitle{Grande}
+	\begin{itemize}
+		\item Total de 18000 variáveis de decisão e 18955 restrições
+		\item CPLEX conseguiu chegar ao gap relativo de 1\% em cerca de 3.5 minutos
+	\end{itemize}
+\end{frame}
+
+%\begin{frame}
+%	\frametitle{Grande}
+%	\begin{figure}[h!]
+%		\centering
+%		\includegraphics[width=0.8\linewidth]{large_solution_accumulated.png}
+%		\caption{Idade dos caminhões ao longo dos anos. Os valores estão em múltiplos de 1000 horas.}
+%		\label{fig:large_solution_accumulated}
+%	\end{figure}
+%\end{frame}
+%
+%\begin{frame}
+%	\frametitle{Grande}
+%	\begin{figure}[h!]
+%		\centering
+%		\includegraphics[width=0.8\linewidth]{large_solution_values.png}
+%		\caption{Alocação de horas por caminhão em cada ano para a instância grande. Os valores estão em múltiplos de 1000 horas.}
+%		\label{fig:large_solution_values}
+%	\end{figure}
+%\end{frame}
+
+\begin{frame}
+	\frametitle{Grande}
+	
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=0.8\linewidth]{large_gap_progress_v2.png}
+		\caption{Progresso do algoritmo para a instância grande}
+		\label{fig:large_gap_progress_v2}
+	\end{figure}
+\end{frame}
+
+\subsection{Artigo}
+
+\begin{frame}
+	\frametitle{Artigo}
+	\begin{itemize}
+		\item Total de 13600 variáveis de decisão e 14324 restrições
+		\item Com parâmetros padrão, o CPLEX executou durante 30 minutos para chegar a um gap relativo de 6.40\%
+		\item Ajustando a estratégia de \textit{probing} para o nível mais agressivo, o parâmetro de ênfase  para priorizar a otimalidade e ativando a heurística de busca local, executando o algoritmo por 30 minutos, foi possível chegar a um gap de 5.76\%.
+	\end{itemize}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Artigo}
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=0.8\linewidth]{paper_gap_progress.png}
+		\caption{Progresso do algoritmo para a instância Artigo}
+		\label{fig:paper_gap_progress}
+	\end{figure}
+\end{frame}
+
+\begin{frame}
+	\frametitle{Artigo}
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=1.0\linewidth]{paper_solution_accumulated.png}
+		\caption{Idade dos caminhões ao longo dos anos. Os valores estão em múltiplos de 1000 horas.}
+		\label{fig:paper_solution_accumulated}
+	\end{figure}
+
+\end{frame}
+
+\begin{frame}
+	\frametitle{Artigo}
+	\begin{figure}[h!]
+		\centering
+		\includegraphics[width=1.0\linewidth]{paper_solutions_bins.png}
+		\caption{Alocação de horas por caminhão em cada faixa de idade para a instância grande}
+		\label{fig:paper_solutions_bins}
+	\end{figure}
+		
+\end{frame}
+
+
+%------------------------------------------------
+
+
+\section{Conclusão}
+\begin{frame}
+	\frametitle{Conclusão}
+	\begin{itemize}
+		\item Implementado um MILP para otimização da programação de equipamentos de mina de céu aberto proposto na literatura \cite{topal2010a}
+		\item Para as 3 instâncias artificias, o CPLEX não teve grandes dificuldades para a sua solução. 
+		\item Entretanto, para dados mais próximos da realidade, foi notável o quão mais difícil o problema se tornou
+		\item A maior dificuldade do trabalho consistiu na geração dos dados artificias e no entendimento das equações da formulação disponível na literatura
+	\end{itemize}
+\end{frame}
+
+
+%------------------------------------------------
+%------------------------------------------------
+
+%\begin{frame}
+%\frametitle{Theorem}
+%\begin{theorem}[Mass--energy equivalence]
+%$E = mc^2$
+%\end{theorem}
+%\end{frame}
+%
+%%------------------------------------------------
+%
+%\begin{frame}[fragile] % Need to use the fragile option when verbatim is used in the slide
+%\frametitle{Verbatim}
+%\begin{example}[Theorem Slide Code]
+%\begin{verbatim}
+%\begin{frame}
+%\frametitle{Theorem}
+%\begin{theorem}[Mass--energy equivalence]
+%$E = mc^2$
+%\end{theorem}
+%\end{frame}\end{verbatim}
+%\end{example}
+%\end{frame}
+%
+%%------------------------------------------------
+%
+%\begin{frame}
+%\frametitle{Figure}
+%Uncomment the code on this slide to include your own image from the same directory as the template .TeX file.
+%%\begin{figure}
+%%\includegraphics[width=0.8\linewidth]{test}
+%%\end{figure}
+%\end{frame}
+%
+%%------------------------------------------------
+%
+%\begin{frame}[fragile] % Need to use the fragile option when verbatim is used in the slide
+%\frametitle{Citation}
+%An example of the \verb|\cite| command to cite within the presentation:\\~
+%
+%This statement requires citation \cite{p1}.
+%\end{frame}
+
+%------------------------------------------------
+
+\begin{frame}
+\frametitle{Referências}
+\footnotesize{
+\begin{thebibliography}{99} % Beamer does not support BibTeX so references must be inserted manually as below
+
+\bibitem[Topal, 2010]{topal2010a}
+Topal, E. and Ramazan, S., 2010. A new MIP model for mine equipment scheduling by minimizing maintenance cost. European Journal of Operational Research, 207(2), pp.1065-1071.
+
+\bibitem[Zhang, 2010]{topal2010b}
+Fu, Z., Topal, E. and Erten, O., 2014. Optimisation of a mixed truck fleet schedule through a mathematical model considering a new truck-purchase option. Mining Technology, 123(1), pp.30-35.
+
+\bibitem[Nakousi, 2018]{nakousi2018}
+Nakousi, C., Pascual, R., Anani, A., Kristjanpoller, F. and Lillo, P., 2018. An asset-management oriented methodology for mine haul-fleet usage scheduling. Reliability Engineering \& System Safety, 180, pp.336-344.
+
+\bibitem[Cacetta, 2016]{cacetta2016}
+Burt, C., Caccetta, L., Fouché, L. and Welgama, P., 2016. An MILP approach to multi-location, multi-period equipment selection for surface mining with case studies. Journal of Industrial \& Management Optimization, 12(2), p.403.
+
+
+\end{thebibliography}
+}
+\end{frame}
+
+%------------------------------------------------
+
+\begin{frame}
+\Huge{\centerline{Obrigado!}}
+\end{frame}
+
+%----------------------------------------------------------------------------------------
+
+\end{document} 
